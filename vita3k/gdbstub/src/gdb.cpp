@@ -862,11 +862,18 @@ void server_open(EmuEnvState &state) {
 
 void server_close(EmuEnvState &state) {
 #ifdef _WIN32
+    if (state.gdb.client_socket != BAD_SOCK)
+        closesocket(state.gdb.client_socket);
     closesocket(state.gdb.listen_socket);
     WSACleanup();
 #else
+    if(state.gdb.client_socket != BAD_SOCK)
+        close(state.gdb.client_socket);
     close(state.gdb.listen_socket);
 #endif
+
+    state.gdb.client_socket = BAD_SOCK;
+    state.gdb.listen_socket = BAD_SOCK;
 
     state.gdb.server_die = true;
     if (state.gdb.server_thread && state.gdb.server_thread->get_id() != std::this_thread::get_id())
