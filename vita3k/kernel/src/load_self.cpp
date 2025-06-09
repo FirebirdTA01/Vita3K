@@ -49,7 +49,7 @@
 #define NID_SYSLYB 0x936c8a78
 #define NID_PROCESS_PARAM 0x70FBA1E7
 
-static constexpr bool LOG_MODULE_LOADING = false;
+static constexpr bool LOG_MODULE_LOADING = true;
 
 struct VarImportsHeader {
     uint32_t unk : 4; // Must be zero
@@ -540,6 +540,42 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
         return SCE_KERNEL_ERROR_ILLEGAL_ELF_HEADER;
     }
 
+    // Detect the lowest p_vaddr among all load segments
+    uint32_t original_elf_base = UINT32_MAX;
+    size_t total_mem_needed = 0;
+    for (Elf_Half seg_index = 0; seg_index < elf.e_phnum; ++seg_index) {
+        const Elf32_Phdr &seg_header = segments[seg_index];
+        if (seg_header.p_type == PT_LOAD) {
+            if (seg_header.p_vaddr < original_elf_base) {
+                original_elf_base = seg_header.p_vaddr;
+            }
+            total_mem_needed += seg_header.p_memsz;
+        }
+    }
+
+    // If no PT_LOAD segments are found, the ELF is invalid
+    if (original_elf_base == UINT32_MAX) {
+        LOG_CRITICAL("Cannot load ELF {}: no PT_LOAD segments found.", self_path);
+        return SCE_KERNEL_ERROR_ILLEGAL_ELF_HEADER;
+    }
+
+    LOG_DEBUG_IF(LOG_MODULE_LOADING, "Detected ELF base: 0x{:X} for {}.", original_elf_base, self_path);
+    // Find a free chunk automatically if the ELF is relocatable
+    Address new_reloc_base = 0;
+    Address target_guest_addr = 0;
+    if (isRelocatable) {
+        size_t alignment = 0x1000;
+        // Add a little overhead for alignment between segments
+        size_t request_size = total_mem_needed + (alignment * 2);
+
+        new_reloc_base = find_free_area(mem, request_size, alignment);
+        if (!new_reloc_base) {
+            LOG_CRITICAL("Cannot load ELF {}: no free memory area large enough found for ELF of size {}", self_path, request_size);
+            return SCE_KERNEL_ERROR_NO_MEMORY;
+        }
+        LOG_INFO("Relocatable ELF: auto-chosen base address: 0x{:08X} (size ~ {} bytes)", new_reloc_base, request_size);
+    }
+
     // TODO: is OSABI always 0?
     // TODO: is ABI_VERSION always 0?
 
@@ -565,7 +601,10 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
         }
     };
 
+    // For non-relocatable ELFs, this is just the actual p_vaddr
     SegmentInfosForReloc segment_reloc_info;
+    bool first_load_segment = true;
+    Address final_elf_base = 0;
 
     auto free_all_segments = [](MemState &mem, SegmentInfosForReloc &segs_info) {
         for (auto &[_, segment] : segs_info) {
@@ -590,6 +629,7 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
         } else if (seg_header.p_type == PT_LOAD) {
             if (seg_header.p_memsz != 0) {
                 Address segment_address = 0;
+                uint32_t segment_offset = seg_header.p_vaddr - original_elf_base;
                 auto alloc_name = fmt::format("{}:seg{}", self_path, seg_index);
 
                 // TODO: when the virtual process bringup is fixed, uncomment this
@@ -609,17 +649,23 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
                     }
                 }
                 */
-
                 if (isRelocatable) {
-                    segment_address = alloc(mem, seg_header.p_memsz, alloc_name.c_str());
+                    // Place at new address
+                    LOG_DEBUG("Relocating segment {} to 0x{:X} based on new_reloc_base: 0x{:016X} and segment_offset: 0x{:08X}", seg_index, new_reloc_base + segment_offset, new_reloc_base, segment_offset);
+                    target_guest_addr = new_reloc_base + segment_offset;
                 } else {
-                    segment_address = alloc_at(mem, seg_header.p_vaddr, seg_header.p_memsz, alloc_name.c_str());
+                    target_guest_addr = seg_header.p_vaddr;
                 }
 
+                segment_address = alloc_at(mem, target_guest_addr, seg_header.p_memsz, alloc_name.c_str());
                 if (!segment_address) {
-                    LOG_CRITICAL("Loading {} ELF {} failed: Could not allocate {} bytes @ {} for segment {}.", (isRelocatable) ? "relocatable" : "fixed", self_path, log_hex(seg_header.p_memsz), log_hex(seg_header.p_vaddr), seg_index);
+                    LOG_CRITICAL("Loading {} ELF {} failed: Could not allocate {} bytes @ {} for segment {}.", (isRelocatable) ? "relocatable" : "fixed", self_path, log_hex(seg_header.p_memsz), log_hex(target_guest_addr), seg_index);
                     free_all_segments(mem, segment_reloc_info);
                     return SCE_KERNEL_ERROR_NO_MEMORY; // TODO is this correct?
+                }
+                if (first_load_segment) {
+                    final_elf_base = original_elf_base;
+                    first_load_segment = false;
                 }
 
                 const Ptr<uint8_t> seg_ptr(segment_address);
@@ -666,6 +712,26 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
         } else {
             LOG_CRITICAL("{}: Skipping segment with unknown p_type {}!", self_path, log_hex(seg_header.p_type));
         }
+    }
+
+    // Figure out the "host pointer" for final_elf_base when loading eboot.bin
+    if (!first_load_segment) {
+        if (self_path == "app0:eboot.bin") {
+            if (isRelocatable) {
+                final_elf_base = original_elf_base;//-mem.page_size;
+            } else {
+                final_elf_base = original_elf_base;
+            }
+            mem.elf_base = final_elf_base;
+            //uintptr_t mem_host_ptr = get_host_ptr(mem, mem.elf_base);
+            // mem.offset = static_cast<ptrdiff_t>(reinterpret_cast<uintptr_t>(mem.memory.get()) - final_elf_base);
+            // mem.elf_base = final_elf_base;
+            //LOG_INFO("Final ELF base address (guest): 0x{:016X}, (host pointer): 0x{:016X}", mem.elf_base, mem_host_ptr);
+        }
+        LOG_INFO("Effective ELF base address (guest): 0x{:016X}, (host pointer): 0x{:016X}, relocatable: {}", final_elf_base, get_host_ptr(mem, final_elf_base), isRelocatable);
+        LOG_INFO("Loading ELF: {}, Relocatable: {}", self_path, isRelocatable);
+        LOG_INFO("Original ELF base: 0x{:08X}", original_elf_base);
+        LOG_INFO("Final ELF base: 0x{:08X}", final_elf_base);
     }
 
     if (kernel.debugger.dump_elfs) {

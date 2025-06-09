@@ -50,6 +50,8 @@ void remove_external_mapping(MemState &mem, uint8_t *addr_ptr);
 bool is_protecting(MemState &state, Address addr, MemPerm *perm = nullptr);
 bool is_valid_addr(const MemState &state, Address addr);
 bool is_valid_addr_range(const MemState &state, Address start, Address end);
+bool is_valid_guest_addr(const MemState &state, Address guest_addr);
+bool is_valid_guest_addr_range(const MemState &state, Address start, Address end);
 bool handle_access_violation(MemState &state, uint8_t *addr, bool write) noexcept;
 Block alloc_block(MemState &mem, uint32_t size, const char *name, Address start_addr = user_main_memory_start);
 Address alloc_at(MemState &state, Address address, uint32_t size, const char *name);
@@ -57,3 +59,6 @@ Address try_alloc_at(MemState &state, Address address, uint32_t size, const char
 void free(MemState &state, Address address);
 uint32_t mem_available(MemState &state);
 const char *mem_name(Address address, MemState &state);
+Address find_free_area(MemState &state, size_t size, size_t alignment);
+uintptr_t get_host_ptr(const MemState &state, Address guest_addr);
+size_t get_total_mem_size();

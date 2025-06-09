@@ -20,6 +20,7 @@
 #include <mem/atomic.h>
 #include <mem/functions.h>
 #include <mem/state.h>
+#include <util/log.h>
 
 template <class T>
 class Ptr {
@@ -61,10 +62,32 @@ public:
         if (addr == 0) {
             return nullptr;
         } else if (mem.use_page_table) {
-            return reinterpret_cast<T *>(mem.page_table[addr / KiB(4)] + addr);
+            uint32_t page_index = addr / KiB(4);
+            uint32_t page_offset = addr % KiB(4);
+            return reinterpret_cast<T *>(mem.page_table[page_index] + page_offset);
         } else {
             return reinterpret_cast<T *>(&mem.memory[addr]);
         }
+    }
+
+    T *get_guest(const MemState &mem) const {
+        if (addr == 0) {
+            LOG_CRITICAL("Accessing null pointer.");
+            return nullptr;
+        }
+
+        // Calculate relative host address
+        const Address relative_host_addr = addr - mem.elf_base;
+        LOG_DEBUG("Guest Address: 0x{:08X}, ELF Base: 0x{:08X}, Relative Host Address: 0x{:08X}, Memory Base: 0x{:016X}", addr, mem.elf_base, relative_host_addr, reinterpret_cast<uintptr_t>(mem.memory.get()));
+        if (!is_valid_addr(mem, relative_host_addr)) {
+            LOG_ERROR("Accessing invalid host address: 0x{:016X} for guest address: 0x{:08X}", relative_host_addr, addr);
+            return nullptr;
+        }
+
+        // Calculate absolute host address
+        uintptr_t host_addr = reinterpret_cast<uintptr_t>(mem.memory.get()) + relative_host_addr;
+        LOG_DEBUG("Guest Address: 0x{:08X}, ELF Base: 0x{:08X}, Relative Host Address: 0x{:08X}, Host Address: 0x{:08x}, Memory Base: 0x{:016X}", addr, mem.elf_base, relative_host_addr, host_addr, reinterpret_cast<uintptr_t>(mem.memory.get()));
+        return reinterpret_cast<T *>(host_addr);
     }
 
     template <class U>

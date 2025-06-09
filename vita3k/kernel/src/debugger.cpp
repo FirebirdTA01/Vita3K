@@ -18,6 +18,7 @@
 #include <kernel/debugger.h>
 #include <kernel/state.h>
 #include <util/align.h>
+#include <util/log.h>
 
 constexpr unsigned char THUMB_BREAKPOINT[2] = { 0x00, 0xBE };
 constexpr unsigned char ARM_BREAKPOINT[4] = { 0x70, 0x00, 0x20, 0xE1 };
@@ -30,12 +31,21 @@ void Debugger::add_breakpoint(MemState &mem, uint32_t addr, bool thumb_mode) {
     const auto lock = std::lock_guard(mutex);
     Breakpoint bk;
     bk.thumb_mode = thumb_mode;
+
+    Ptr<uint8_t> ptr(addr);
+    uint8_t *host_ptr = ptr.get_guest(mem);
+
+    if (!host_ptr) {
+        LOG_INFO("Failed to add breakpoint: invalid host pointer for guest address 0x{:08X}", addr);
+        return;
+    }
+
     if (thumb_mode) {
-        std::memcpy(&bk.data, Ptr<uint8_t>(addr).get(mem), sizeof(THUMB_BREAKPOINT));
-        std::memcpy(Ptr<uint8_t>(addr).get(mem), THUMB_BREAKPOINT, sizeof(THUMB_BREAKPOINT));
+        std::memcpy(&bk.data, host_ptr, sizeof(THUMB_BREAKPOINT));
+        std::memcpy(host_ptr, THUMB_BREAKPOINT, sizeof(THUMB_BREAKPOINT));
     } else {
-        std::memcpy(&bk.data, Ptr<uint8_t>(addr).get(mem), sizeof(ARM_BREAKPOINT));
-        std::memcpy(Ptr<uint8_t>(addr).get(mem), ARM_BREAKPOINT, sizeof(ARM_BREAKPOINT));
+        std::memcpy(&bk.data, host_ptr, sizeof(ARM_BREAKPOINT));
+        std::memcpy(host_ptr, ARM_BREAKPOINT, sizeof(ARM_BREAKPOINT));
     }
     breakpoints.emplace(addr, bk);
     parent.invalidate_jit_cache(addr, 4);
@@ -43,10 +53,22 @@ void Debugger::add_breakpoint(MemState &mem, uint32_t addr, bool thumb_mode) {
 
 void Debugger::remove_breakpoint(MemState &mem, uint32_t addr) {
     const auto lock = std::lock_guard(mutex);
-    if (breakpoints.contains(addr)) {
-        auto last = breakpoints[addr];
-        std::memcpy(Ptr<uint8_t>(addr).get(mem), &last.data, last.thumb_mode ? sizeof(THUMB_BREAKPOINT) : sizeof(ARM_BREAKPOINT));
-        breakpoints.erase(addr);
+    auto it = breakpoints.find(addr);
+    if (it != breakpoints.end()) {
+        const Breakpoint &bk = it->second;
+
+        Ptr<uint8_t> ptr(addr);
+        uint8_t *host_ptr = ptr.get_guest(mem);
+
+        if (!host_ptr) {
+            LOG_INFO("Failed to remove breakpoint: invalid host pointer for guest address 0x{:08X}", addr);
+            return;
+        }
+
+        // read or restore from bk.data
+        size_t size = bk.thumb_mode ? sizeof(THUMB_BREAKPOINT) : sizeof(ARM_BREAKPOINT);
+        std::memcpy(host_ptr, &bk.data, size);
+        breakpoints.erase(it);
         parent.invalidate_jit_cache(addr, 4);
     }
 }
@@ -68,7 +90,7 @@ void Debugger::add_trampoline(MemState &mem, uint32_t addr, bool thumb_mode, con
         tr->trampoline_addr |= 1;
 
     // Insert trampoline jumper and back up
-    uint32_t *inst = Ptr<uint32_t>(addr).get(mem);
+    uint32_t *inst = Ptr<uint32_t>(addr).get_guest(mem);
     tr->original = *inst;
     uint32_t back_inst;
     if (thumb_mode && is_thumb16(swap_inst(*inst))) {
@@ -88,10 +110,10 @@ void Debugger::add_trampoline(MemState &mem, uint32_t addr, bool thumb_mode, con
     }
 
     // Create trampoline body
-    uint32_t *trampoline_insts = Ptr<uint32_t>(trampoline_addr).get(mem);
+    uint32_t *trampoline_insts = Ptr<uint32_t>(trampoline_addr).get_guest(mem);
     trampoline_insts[0] = back_inst; // original instruction; if thumb16 it's nop + original thumb16 instruction
     trampoline_insts[1] = thumb_mode ? 0xDF53BF00 : 0xEF000053; // SVC 0x53
-    Trampoline **trampoline_host_ptr = Ptr<Trampoline *>(trampoline_addr + 8).get(mem); // interrupt handler will read this
+    Trampoline **trampoline_host_ptr = Ptr<Trampoline *>(trampoline_addr + 8).get_guest(mem); // interrupt handler will read this
     *trampoline_host_ptr = tr.get();
 
     std::lock_guard<std::mutex> lock(mutex);
@@ -111,7 +133,7 @@ void Debugger::remove_trampoline(MemState &mem, uint32_t addr) {
     std::lock_guard<std::mutex> lock(mutex);
     const auto it = trampolines.find(addr);
     if (it != trampolines.end()) {
-        uint32_t *insts = Ptr<uint32_t>(addr).get(mem);
+        uint32_t *insts = Ptr<uint32_t>(addr).get_guest(mem);
         insts[0] = it->second->original;
         trampolines.erase(it);
         parent.invalidate_jit_cache(addr, 4);

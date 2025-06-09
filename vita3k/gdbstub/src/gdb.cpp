@@ -42,7 +42,7 @@
 #include <unistd.h>
 #endif
 
-#define LOG_GDB_LEVEL 0
+#define LOG_GDB_LEVEL 2
 
 #if LOG_GDB_LEVEL >= 1
 #define LOG_GDB LOG_INFO
@@ -360,13 +360,21 @@ static std::string cmd_read_memory(EmuEnvState &state, PacketCommand &command) {
     const uint32_t address = parse_hex(first);
     const uint32_t length = parse_hex(second);
 
+    const Address guest_end = static_cast<Address>(address + length);
+
+    if (!is_valid_guest_addr_range(state.mem, address, guest_end)) {
+        LOG_ERROR("GDB Server attempted to read invalid memory range: 0x{:08X} - 0x{:08X}", address, guest_end);
+        return "EAA";
+    }
+
     if (!check_memory_region(address, length, state.mem))
         return "EAA";
 
     std::stringstream stream;
 
     for (uint32_t a = 0; a < length; a++) {
-        stream << fmt::format("{:0>2x}", *Ptr<uint8_t>(address + a).get(state.mem));
+        uint8_t val = *Ptr<uint8_t>(address + a).get_guest(state.mem);
+        stream << fmt::format("{:0>2x}", val);
     }
 
     return stream.str();
@@ -387,7 +395,7 @@ static std::string cmd_write_memory(EmuEnvState &state, PacketCommand &command) 
         return "EAA";
 
     for (uint32_t a = 0; a < length; a++) {
-        *Ptr<uint8_t>(address + a).get(state.mem) = static_cast<uint8_t>(parse_hex(hex_data.substr(a * 2, 2)));
+        *Ptr<uint8_t>(address + a).get_guest(state.mem) = static_cast<uint8_t>(parse_hex(hex_data.substr(a * 2, 2)));
     }
 
     return "OK";
@@ -410,7 +418,7 @@ static std::string cmd_write_binary(EmuEnvState &state, PacketCommand &command) 
         return "EAA";
 
     for (uint32_t a = 0; a < length; a++) {
-        *Ptr<uint8_t>(address + a).get(state.mem) = data[a];
+        *Ptr<uint8_t>(address + a).get_guest(state.mem) = data[a];
     }
 
     return "OK";
@@ -589,6 +597,12 @@ static std::string cmd_add_breakpoint(EmuEnvState &state, PacketCommand &command
     const uint32_t address = parse_hex(content.substr(first + 1, second - 1 - first));
     const uint32_t kind = static_cast<uint32_t>(std::stol(content.substr(second + 1, content.size() - second - 1)));
 
+    if (!is_valid_guest_addr(state.mem, address)) {
+        uintptr_t host_addr = get_host_ptr(state.mem, address);
+        LOG_GDB("GDB Server attempted to add breakpoint at guest address {} ({}, {}). Maps to host 0x{:016X} which is invalid", log_hex(address), type, kind, host_addr);
+        return "EAA";
+    }
+
     LOG_GDB("GDB Server New Breakpoint at {} ({}, {}).", log_hex(address), type, kind);
 
     // kind is 2 if it's thumb mode
@@ -606,6 +620,11 @@ static std::string cmd_remove_breakpoint(EmuEnvState &state, PacketCommand &comm
     const uint32_t type = static_cast<uint32_t>(std::stol(content.substr(1, first - 1)));
     const uint32_t address = parse_hex(content.substr(first + 1, second - 1 - first));
     const uint32_t kind = static_cast<uint32_t>(std::stol(content.substr(second + 1, content.size() - second - 1)));
+
+    if (!is_valid_guest_addr(state.mem, address)) {
+        LOG_GDB("GDB Server attempted to remove breakpoint at {} ({}, {}). INVALID ADDRESS!", log_hex(address), type, kind);
+        return "EAA";
+    }
 
     LOG_GDB("GDB Server Removed Breakpoint at {} ({}, {}).", log_hex(address), type, kind);
     state.kernel.debugger.remove_breakpoint(state.mem, address);
@@ -704,7 +723,7 @@ static bool command_begins_with(PacketCommand &command, const std::string_view s
 }
 
 static int64_t server_next(EmuEnvState &state) {
-    PacketData buffer;
+    static std::vector<char> recv_buffer;
 
     // Wait for the server to close or a packet to be received.
     fd_set readSet;
@@ -716,27 +735,50 @@ static int64_t server_next(EmuEnvState &state) {
     if (state.gdb.server_die)
         return -1;
 
-    const int64_t length = recv(state.gdb.client_socket, buffer, sizeof(buffer), 0);
+    char temp[1024];
+    const int64_t length = recv(state.gdb.client_socket, temp, sizeof(temp), 0);
     if (length <= 0) {
         LOG_GDB("GDB Server Connection Closed");
         return -1;
     }
-    buffer[length] = '\0';
+    recv_buffer.insert(recv_buffer.end(), temp, temp + length);
 
-    for (int64_t a = 0; a < length; a++) {
-        switch (buffer[a]) {
-        case '+': {
-            break; // Cool.
+    std::size_t pos = 0;
+    while (pos < recv_buffer.size()) {
+        char c = recv_buffer[pos];
+        if (c == '+') {
+            pos += 1;
+            continue; // Cool.
         }
-        case '-': {
-            LOG_GDB("GDB Server Transmission Error. {}", std::string(buffer, length));
+        else if (c == '-') {
+            LOG_GDB("GDB Server Transmission Error. {}", std::string(recv_buffer.data(), recv_buffer.size()));
             server_reply(state.gdb, state.gdb.last_reply.c_str());
-            break;
+            pos += 1;
+            continue;
         }
-        case '$': {
+        else if (c == '$') {
+            // Find the matching '#' which denotes the end of the packet plus the 2 checksum digits after
+            auto hash_index = std::string::npos;
+            for (std::size_t i = pos + 1; i + 2 < recv_buffer.size(); i++) {
+                if (recv_buffer[i] == '#') {
+                    hash_index = i;
+                    break;
+                }
+            }
+            if (hash_index == std::string::npos) {
+                // We haven't received the full packet yet
+                break;
+            }
+            if (hash_index + 2 >= recv_buffer.size()) {
+                // Not enough data for full packet, missing checksum bytes
+                break;
+            }
+
             server_ack(state.gdb, '+');
 
-            PacketCommand command = parse_command(buffer + a, length - a);
+            std::size_t packet_len = (hash_index + 3) - pos; // from '$' to "#xx"
+            std::string packet_data(&recv_buffer[pos], packet_len);
+            PacketCommand command = parse_command(&recv_buffer[pos], packet_len);
             if (command.is_valid) {
                 bool found_command = false;
                 for (const auto &function : functions) {
@@ -756,19 +798,22 @@ static int64_t server_next(EmuEnvState &state) {
                     state.gdb.last_reply = "";
                     server_reply(state.gdb, state.gdb.last_reply.c_str());
                 }
-                a += command.content_length + 3;
-
             } else {
                 server_ack(state.gdb, '-');
 
-                LOG_GDB("GDB Server Invalid Command. {}", std::string(buffer, length));
+                LOG_GDB("GDB Server Invalid Command. {}", packet_data);
             }
-            break;
+
+            pos += packet_len;
+        } else {
+            // Not '+', '-' or '$', Possibly leftover or partial data? We'll skip it
+            LOG_GDB("Skipping unexpected char '{}' at pos {}", c, pos);
+            pos += 1;
         }
-        default: break;
-        }
-        if (state.gdb.server_die)
-            break;
+    }
+
+    if (pos > 0) {
+        recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + pos);
     }
 
     return length;

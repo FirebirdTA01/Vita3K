@@ -78,4 +78,6 @@ struct MemState {
     bool use_page_table = false;
     PageTable page_table;
     std::map<uint64_t, MemExternalMapping, std::greater<>> external_mapping;
+
+    uint64_t elf_base;
 };

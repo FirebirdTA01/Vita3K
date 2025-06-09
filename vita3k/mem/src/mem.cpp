@@ -97,6 +97,21 @@ bool init(MemState &state, const bool use_page_table) {
         return false;
     }
 #endif
+    /*
+    // The pointer in state.memory.get() might NOT be the same as preferred_address
+    // Compute how far off we are from our Vita guest base address
+    {
+        const uintptr_t desired_base = state.elf_base;
+        const uintptr_t actual_base = reinterpret_cast<uintptr_t>(state.memory.get());
+        state.offset = static_cast<ptrdiff_t>((signed)desired_base - (signed) actual_base);
+
+        LOG_INFO("Desired base = 0x{:08X}, Actual base = 0x{:016X}, Offset = {:#x}", state.elf_base, reinterpret_cast<uintptr_t>(state.memory.get()), state.offset);
+
+        // Test some GDB address to see if the sign needs to be flipped
+        uintptr_t test_addr = 0x81000b9c;
+        uintptr_t host_addr = test_addr + state.offset;
+        LOG_INFO("For test address: 0x{:08X}, host address = 0x{:016X}", test_addr, host_addr);
+    }*/
 
     const size_t table_length = TOTAL_MEM_SIZE / state.page_size;
     state.alloc_table = AllocPageTable(new AllocMemPage[table_length]);
@@ -150,6 +165,14 @@ bool is_valid_addr_range(const MemState &state, Address start, Address end) {
     const uint32_t start_page = start / state.page_size;
     const uint32_t end_page = (end + state.page_size - 1) / state.page_size;
     return state.allocator.free_slot_count(start_page, end_page) == 0;
+}
+
+bool is_valid_guest_addr(const MemState &state, Address guest_addr) {
+    return guest_addr >= state.elf_base && guest_addr < (state.elf_base + TOTAL_MEM_SIZE);
+}
+
+bool is_valid_guest_addr_range(const MemState &state, Address guest_start, Address guest_end) {
+    return guest_start >= state.elf_base && (guest_end - guest_start) <= (state.elf_base + TOTAL_MEM_SIZE);
 }
 
 static Address alloc_inner(MemState &state, uint32_t start_page, int page_count, const char *name, const bool force) {
@@ -563,6 +586,46 @@ const char *mem_name(Address address, MemState &state) {
         return state.page_name_map.find(address / state.page_size)->second.c_str();
     }
     return "";
+}
+
+// Find a free contiguous area of 'size' bytes in the guest address space without actually committing/allocating it yet
+// TO DO: This function checks alignment at the start address, but not in the entire run, if segment offsets need to be be page-aligned this should be fixed
+// This "scan all pages from 1 to max" is not efficient, if it causes slow downs when loading many modules we can do a better search in allocator
+Address find_free_area(MemState& state, size_t size, size_t alignment) {
+    const std::lock_guard<std::mutex> lock(state.generation_mutex);
+
+    // Round up 'size' to multiples of the page size
+    const uint32_t page_count = align(size, state.page_size) / state.page_size;
+    const uint32_t max_page = state.allocator.max_offset - page_count;
+
+    for (uint32_t page = 1; page <= max_page; page++) {
+        // Check if all pages [page, page + page_count] are free
+        if (state.allocator.free_slot_count(page, page + page_count) == page_count) {
+            const Address addr = page * state.page_size;
+            if (alignment == 0 || addr % alignment == 0) {
+                // Found a suitable chunk which is also aligned
+                return addr;
+            }
+        }
+    }
+
+    // No free area found
+    return 0;
+}
+
+uintptr_t get_host_ptr(const MemState &state, Address guest_addr) {
+    if (guest_addr < state.elf_base || guest_addr >= state.elf_base + TOTAL_MEM_SIZE) {
+        LOG_CRITICAL("Guest address 0x{:08X} out of bounds for ELF base 0x{:08X}", guest_addr, state.elf_base);
+        return 0;
+    }
+
+    // Calculate relative host address
+    const Address relative_host_addr = guest_addr - state.elf_base;
+    return reinterpret_cast<uintptr_t>(state.memory.get()) + relative_host_addr;
+}
+
+size_t get_total_mem_size() {
+    return TOTAL_MEM_SIZE;
 }
 
 #ifdef _WIN32
