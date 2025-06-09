@@ -1,5 +1,5 @@
 ﻿// Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -41,10 +41,10 @@ void get_firmware_file(EmuEnvState &emuenv) {
         { SCE_SYSTEM_PARAM_LANG_CHINESE_T, "zh-hant-hk" },
         { SCE_SYSTEM_PARAM_LANG_CHINESE_S, "zh-hans-cn" },
         { SCE_SYSTEM_PARAM_LANG_FINNISH, "fi-fi" },
-        { SCE_SYSTEM_PARAM_LANG_SWEDISH, "sv-sv" },
+        { SCE_SYSTEM_PARAM_LANG_SWEDISH, "sv-se" },
         { SCE_SYSTEM_PARAM_LANG_DANISH, "da-dk" },
         { SCE_SYSTEM_PARAM_LANG_NORWEGIAN, "no-no" },
-        { SCE_SYSTEM_PARAM_LANG_POLISH, "pl-PL" },
+        { SCE_SYSTEM_PARAM_LANG_POLISH, "pl-pl" },
         { SCE_SYSTEM_PARAM_LANG_PORTUGUESE_BR, "pt-br" },
         { SCE_SYSTEM_PARAM_LANG_ENGLISH_GB, "en-gb" },
         { SCE_SYSTEM_PARAM_LANG_TURKISH, "tr-tr" },
@@ -66,9 +66,9 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
     static std::string title_str;
 
     const auto display_size = ImGui::GetIO().DisplaySize;
-    const ImVec2 RES_SCALE(display_size.x / emuenv.res_width_dpi_scale, display_size.y / emuenv.res_height_dpi_scale);
-    const ImVec2 SCALE(RES_SCALE.x * emuenv.dpi_scale, RES_SCALE.y * emuenv.dpi_scale);
-    const ImVec2 WINDOW_SIZE(756.f * SCALE.x, 418.f * SCALE.y);
+    const auto RES_SCALE = ImVec2(emuenv.gui_scale.x, emuenv.gui_scale.y);
+    const auto SCALE = ImVec2(RES_SCALE.x * emuenv.manual_dpi_scale, RES_SCALE.y * emuenv.manual_dpi_scale);
+    const auto WINDOW_SIZE = ImVec2(756.f * SCALE.x, 418.f * SCALE.y);
     const auto SELECT_SIZE = 72.f * SCALE.y;
     const ImVec2 BUTTON_SIZE(186.f * SCALE.x, 52.f * SCALE.y);
     const ImVec2 BUTTON_POS(8.f * SCALE.x, display_size.y - BUTTON_SIZE.y - (6.f * SCALE.y));
@@ -77,6 +77,7 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
 
     auto &lang = gui.lang.initial_setup;
     auto &common = emuenv.common_dialog.lang.common;
+    auto &welcome = gui.lang.welcome;
 
     const auto is_default_path = emuenv.cfg.pref_path == emuenv.default_path;
     const auto FW_PREINST_PATH{ emuenv.pref_path / "pd0" };
@@ -86,7 +87,7 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
     const auto FW_FONT_PATH{ emuenv.pref_path / "sa0" };
     const auto FW_FONT_INSTALLED = fs::exists(FW_FONT_PATH) && !fs::is_empty(FW_FONT_PATH);
 
-    ImGui::PushFont(gui.vita_font);
+    ImGui::PushFont(gui.vita_font[emuenv.current_font_level]);
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(display_size, ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
@@ -178,12 +179,12 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
         ImGui::SetCursorPosY((WINDOW_SIZE.y / 2.f) - (ImGui::GetFontSize() * 3.5f));
         TextColoredCentered(GUI_COLOR_TEXT_TITLE, lang["install_highly_recommended"].c_str());
         ImGui::Spacing();
-        if (ImGui::Button("Download Preinst Firmware", BIG_BUTTON_SIZE))
+        if (ImGui::Button(welcome["download_preinst_firmware"].c_str(), BIG_BUTTON_SIZE))
             open_path("https://bit.ly/4hlePsX");
         ImGui::SameLine(0, 20.f * SCALE.x);
         ImGui::Text("%s %s", lang["installed"].c_str(), FW_PREINST_INSTALLED ? "V" : "X");
         ImGui::Spacing();
-        if (ImGui::Button(lang["download_firmware"].c_str(), BIG_BUTTON_SIZE))
+        if (ImGui::Button(welcome["download_firmware"].c_str(), BIG_BUTTON_SIZE))
             get_firmware_file(emuenv);
         ImGui::SameLine(0, 20.f * SCALE.x);
         ImGui::Text("%s %s", lang["installed"].c_str(), FW_INSTALLED ? "V" : "X");
@@ -230,7 +231,7 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
         ImGui::SetCursorPos(BIG_BUTTON_POS);
         if (ImGui::Button(common["ok"].c_str(), BIG_BUTTON_SIZE) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_cross))) {
             emuenv.cfg.initial_setup = true;
-            config::serialize_config(emuenv.cfg, emuenv.base_path);
+            config::serialize_config(emuenv.cfg, emuenv.config_path);
         }
         break;
     default: break;
@@ -249,7 +250,7 @@ void draw_initial_setup(GuiState &gui, EmuEnvState &emuenv) {
     ImGui::SetCursorPos(ImVec2(display_size.x - BUTTON_SIZE.x - BUTTON_POS.x, BUTTON_POS.y));
     if ((setup < FINISHED) && ImGui::Button(lang["next"].c_str(), BUTTON_SIZE) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_cross))) {
         setup = (InitialSetup)(setup + 1);
-        config::serialize_config(emuenv.cfg, emuenv.base_path);
+        config::serialize_config(emuenv.cfg, emuenv.config_path);
     }
     ImGui::SetWindowFontScale(1.f);
 

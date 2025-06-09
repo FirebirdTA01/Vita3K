@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,15 +26,18 @@
 #include <spdlog/sinks/msvc_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <iostream>
+#include <vector>
+
 namespace logging {
 
 static const fs::path &LOG_FILE_NAME = "vita3k.log";
 static const char *LOG_PATTERN = "%^[%H:%M:%S.%e] |%L| [%!]: %v%$";
-std::vector<spdlog::sink_ptr> sinks;
+static std::vector<spdlog::sink_ptr> sinks;
 
-void register_log_exception_handler();
+static void register_log_exception_handler();
 
-void flush() {
+static void flush() {
     spdlog::details::registry::instance().flush_all();
 }
 

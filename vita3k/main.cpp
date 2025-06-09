@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -48,6 +48,7 @@
 #ifdef _WIN32
 #include <combaseapi.h>
 #include <process.h>
+#define SDL_MAIN_HANDLED
 #endif
 
 #include <SDL.h>
@@ -186,7 +187,11 @@ int main(int argc, char *argv[]) {
         SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_SWITCH, "1");
         SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_JOY_CONS, "1");
 
-        if (SDL_Init(SDL_INIT_GAMECONTROLLER | SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+        // Enable High DPI support
+#ifdef _WIN32
+        SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
+#endif
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) < 0) {
             app::error_dialog("SDL initialisation failed.");
             return SDLInitFailed;
         }
@@ -228,6 +233,7 @@ int main(int argc, char *argv[]) {
             run_execv(argv, emuenv);
         }
         gui::init(gui, emuenv);
+        app::update_viewport(emuenv);
     }
 
     if (cfg.content_path.has_value()) {
@@ -362,8 +368,8 @@ int main(int argc, char *argv[]) {
     }
 
     const auto draw_app_background = [](GuiState &gui, EmuEnvState &emuenv) {
-        const auto pos_min = ImVec2(emuenv.viewport_pos.x, emuenv.viewport_pos.y);
-        const auto pos_max = ImVec2(pos_min.x + emuenv.viewport_size.x, pos_min.y + emuenv.viewport_size.y);
+        const auto pos_min = ImVec2(emuenv.logical_viewport_pos.x, emuenv.logical_viewport_pos.y);
+        const auto pos_max = ImVec2(pos_min.x + emuenv.logical_viewport_size.x, pos_min.y + emuenv.logical_viewport_size.y);
 
         if (gui.apps_background.contains(emuenv.io.app_path))
             // Display application background
@@ -391,7 +397,7 @@ int main(int argc, char *argv[]) {
             draw_app_background(gui, emuenv);
 
             emuenv.renderer->precompile_shader(hash);
-            gui::draw_pre_compiling_shaders_progress(gui, emuenv, uint32_t(emuenv.renderer->shaders_cache_hashs.size()));
+            gui::draw_pre_compiling_shaders_progress(gui, emuenv, static_cast<uint32_t>(emuenv.renderer->shaders_cache_hashs.size()));
 
             gui::draw_end(gui);
             emuenv.renderer->swap_window(emuenv.window.get());
@@ -409,8 +415,8 @@ int main(int argc, char *argv[]) {
         // Driver acto!
         renderer::process_batches(*emuenv.renderer.get(), emuenv.renderer->features, emuenv.mem, emuenv.cfg);
 
-        const SceFVector2 viewport_pos = { emuenv.viewport_pos.x, emuenv.viewport_pos.y };
-        const SceFVector2 viewport_size = { emuenv.viewport_size.x, emuenv.viewport_size.y };
+        const SceFVector2 viewport_pos = { emuenv.drawable_viewport_pos.x, emuenv.drawable_viewport_pos.y };
+        const SceFVector2 viewport_size = { emuenv.drawable_viewport_size.x, emuenv.drawable_viewport_size.y };
         emuenv.renderer->render_frame(viewport_pos, viewport_size, emuenv.display, emuenv.gxm, emuenv.mem);
 
         gui::draw_begin(gui, emuenv);
@@ -427,8 +433,8 @@ int main(int argc, char *argv[]) {
         // Driver acto!
         renderer::process_batches(*emuenv.renderer.get(), emuenv.renderer->features, emuenv.mem, emuenv.cfg);
 
-        const SceFVector2 viewport_pos = { emuenv.viewport_pos.x, emuenv.viewport_pos.y };
-        const SceFVector2 viewport_size = { emuenv.viewport_size.x, emuenv.viewport_size.y };
+        const SceFVector2 viewport_pos = { emuenv.drawable_viewport_pos.x, emuenv.drawable_viewport_pos.y };
+        const SceFVector2 viewport_size = { emuenv.drawable_viewport_size.x, emuenv.drawable_viewport_size.y };
         emuenv.renderer->render_frame(viewport_pos, viewport_size, emuenv.display, emuenv.gxm, emuenv.mem);
         // Calculate FPS
         app::calculate_fps(emuenv);
@@ -442,7 +448,7 @@ int main(int argc, char *argv[]) {
         gui::draw_vita_area(gui, emuenv);
 
         if (emuenv.cfg.performance_overlay && !emuenv.kernel.is_threads_paused() && (emuenv.common_dialog.status != SCE_COMMON_DIALOG_STATUS_RUNNING)) {
-            ImGui::PushFont(gui.vita_font);
+            ImGui::PushFont(gui.vita_font[emuenv.current_font_level]);
             gui::draw_perf_overlay(gui, emuenv);
             ImGui::PopFont();
         }

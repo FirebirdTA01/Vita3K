@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -222,11 +222,9 @@ static void join_files(const fs::path &path, const std::string &filename, const 
 
     fs::ofstream fileout(output, std::ios::binary);
     for (const auto &file : files) {
-        fs::ifstream filein(file, std::ios::binary);
-        std::vector<char> buffer(fs::file_size(file));
-        filein.read(&buffer[0], fs::file_size(file));
-        fileout.write(&buffer[0], fs::file_size(file));
-        filein.close();
+        std::vector<char> buffer(0);
+        fs_utils::read_data(file, buffer);
+        fileout.write(buffer.data(), buffer.size());
         fs::remove(file);
     }
     fileout.close();

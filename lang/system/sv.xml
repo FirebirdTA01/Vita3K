@@ -3,24 +3,24 @@
 <lang>
 	<main_menubar>
 		<file name="Arkiv">
-			<open_pref_path>Open Pref Path</open_pref_path>
-			<install_firmware>Install Firmware</install_firmware>
-			<install_pkg>Install .pkg</install_pkg>
-			<install_zip>Install .zip, .vpk</install_zip>
-			<install_license>Install License</install_license>
+			<open_pref_path>Öppna inställningssökväg</open_pref_path>
+			<install_firmware>Installera firmware</install_firmware>
+			<install_pkg>Installera .pkg</install_pkg>
+			<install_zip>Installera .zip, .vpk</install_zip>
+			<install_license>Installera licens</install_license>
 			<exit>Avsluta</exit>
 		</file>
-		<emulation name="Emulation">
-			<last_apps_used>Last Apps used</last_apps_used>
+		<emulation name="Emulering">
+			<last_apps_used>Senaste använda program</last_apps_used>
 		</emulation>
-		<configuration name="Configuration">
+		<configuration name="Konfiguration">
 			<user_management>Hantering av användare</user_management>
 		</configuration>
-		<controls name="Controls">
-			<keyboard_controls>Keyboard Controls</keyboard_controls>
+		<controls name="Handkontroller">
+			<keyboard_controls>Tangentbordskontroller</keyboard_controls>
 		</controls>
 		<help name="Hjälp">
-			<welcome>Welcome</welcome>
+			<welcome>Välkommen</welcome>
 		</help>
 	</main_menubar>
 
@@ -29,12 +29,11 @@
 		<update>Uppdatera</update>
 		<update_history>Uppdateringshistorik</update_history>
 		<history_version>Version {}</history_version>
-		<information>Information</information>
 		<delete>
 			<app_delete>Den här applikationen och alla tillhörande data, inklusive sparade data, kommer att raderas.</app_delete>
 			<saved_data_delete>Vill du radera dessa sparade data?</saved_data_delete>
 		</delete>
-		<info>
+		<info name="Information">
 			<eligible>Möjligt</eligible>
 			<ineligible>Inte möjligt</ineligible>
 			<level>Nivå</level>
@@ -53,6 +52,7 @@ Felkod: {}</an_error_occurred>
 		<cancel>Avbryt</cancel>
 		<close>Stänga</close>
 		<delete>Radera</delete>
+		<error>Fel</error>
 		<file_corrupted>Filen är skadad.</file_corrupted>
 		<microphone_disabled>Aktivera mikrofonen.</microphone_disabled>
 		<no>Nej</no>
@@ -63,21 +63,21 @@ Felkod: {}</an_error_occurred>
 		<wday>
 			<day>söndag</day>
 			<day>måndag</day>
-			<day>tirsdag</day>
-			<day>middag</day>
+			<day>tisdag</day>
+			<day>onsdag</day>
 			<day>torsdag</day>
 			<day>fredag</day>
-			<day>iördag</day>
+			<day>lördag</day>
 		</wday>
 		<ymonth>
-			<month>Januar</month>
-			<month>Februar</month>
-			<month>Marts</month>
+			<month>Januari</month>
+			<month>Februari</month>
+			<month>Mars</month>
 			<month>April</month>
 			<month>Maj</month>
 			<month>Juni</month>
 			<month>Juli</month>
-			<month>August</month>
+			<month>Augusti</month>
 			<month>September</month>
 			<month>Oktober</month>
 			<month>November</month>
@@ -176,11 +176,6 @@ Felkod: {}</an_error_occurred>
 		<minutes_ago>{} minuter sedan</minutes_ago>
 	</common>
 
-	<compat_db>
-		<error>Fel</error>
-		<information>Information</information>
-	</compat_db>
-
 	<content_manager name="Innehållshanterare">
 		<application name="Applikationer">
 			<delete>De markerade applikationerna och alla tillhörande data, inklusive sparade data, kommer att raderas.</delete>
@@ -196,13 +191,8 @@ Felkod: {}</an_error_occurred>
 	</content_manager>
 
 	<controllers name="Handkontroller">
-		<name>Namn</name>
 		<num>Num</num>
 	</controllers>
-
-	<controls name="Controls">
-		<error>Fel</error>
-	</controls>
 
 	<dialog>
 		<trophy>
@@ -285,7 +275,7 @@ Ditt Vita3K-system är redo!</completed_setup>
 			</theme>
 			<start_screen name="Startskärm">
 				<image>Bild</image>
-				<add_image>Add Image</add_image>
+				<add_image>Lägg till bild</add_image>
 			</start_screen>
 			<home_screen_backgrounds name="Bakgrunder för hemskärmen">
 			</home_screen_backgrounds>
@@ -331,7 +321,6 @@ Ditt Vita3K-system är redo!</completed_setup>
 	<settings_dialog name="Inställningar">
 		<network name="Nätverk">
 		</network>
-		<save>Spara</save>
 	</settings_dialog>
 
 	<sys_apps_title>
@@ -348,14 +337,14 @@ Ditt Vita3K-system är redo!</completed_setup>
 		<earned>Vunna</earned>
 		<name>Namn</name>
 		<no_trophies>Det finns inga trophies.
-Du kan få trophies om du använder en applikation som stder trophy-funktionen.</no_trophies>
+Du kan få trophies om du använder en applikation som stöder trophy-funktionen.</no_trophies>
 		<not_earned>Ej vunnen</not_earned>
 		<original>Ursprunglig</original>
 		<sort>Sortera</sort>
 		<trophies>Trophies</trophies>
 		<grade>Grad</grade>
 		<progress>Framsteg</progress>
-		<updated>Uppdsterat</updated>
+		<updated>Uppdaterat</updated>
 	</trophy_collection>
 
 	<user_management>

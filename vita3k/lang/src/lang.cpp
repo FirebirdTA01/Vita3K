@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include <gui/state.h>
 #include <ime/state.h>
 #include <util/fs.h>
+#include <util/vector_utils.h>
 
 #include <pugixml.hpp>
 
@@ -358,7 +359,7 @@ void init_lang(LangState &lang, EmuEnvState &emuenv) {
                                 if (!keyboard_lang_ime.empty()) {
                                     lang_ime.clear();
                                     const auto op = [](const auto &lang) {
-                                        return std::make_pair(SceImeLanguage(lang.attribute("id").as_ullong()), lang.text().as_string());
+                                        return std::make_pair(static_cast<SceImeLanguage>(lang.attribute("id").as_ullong()), lang.text().as_string());
                                     };
                                     std::transform(std::begin(keyboard_lang_ime), std::end(keyboard_lang_ime), std::back_inserter(lang_ime), op);
                                 }

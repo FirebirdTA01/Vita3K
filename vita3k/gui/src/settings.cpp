@@ -1,5 +1,5 @@
 ﻿// Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 
 #include <pugixml.hpp>
 #include <stb_image.h>
+#include <util/vector_utils.h>
 
 #undef ERROR
 
@@ -157,7 +158,7 @@ static void get_themes_list(GuiState &gui, EmuEnvState &emuenv) {
         theme_preview_name["default"][LOCK] = "data/internal/theme/defaultTheme_startScreen.png";
 
         themes_info["default"].title = gui.lang.settings.theme_background.main["default"];
-        themes_list.push_back({ "default", {} });
+        themes_list.emplace_back("default", time_t{});
     } else
         LOG_WARN("Default theme not found, install firmware fix this!");
 
@@ -237,10 +238,10 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
 
     static SettingsMenu settings_menu = SettingsMenu::SELECT;
 
-    const ImVec2 VIEWPORT_POS(emuenv.viewport_pos.x, emuenv.viewport_pos.y);
-    const ImVec2 VIEWPORT_SIZE(emuenv.viewport_size.x, emuenv.viewport_size.y);
-    const ImVec2 RES_SCALE(VIEWPORT_SIZE.x / emuenv.res_width_dpi_scale, VIEWPORT_SIZE.y / emuenv.res_height_dpi_scale);
-    const ImVec2 SCALE(RES_SCALE.x * emuenv.dpi_scale, RES_SCALE.y * emuenv.dpi_scale);
+    const ImVec2 VIEWPORT_POS(emuenv.logical_viewport_pos.x, emuenv.logical_viewport_pos.y);
+    const ImVec2 VIEWPORT_SIZE(emuenv.logical_viewport_size.x, emuenv.logical_viewport_size.y);
+    const ImVec2 RES_SCALE(emuenv.gui_scale.x, emuenv.gui_scale.y);
+    const ImVec2 SCALE(RES_SCALE.x * emuenv.manual_dpi_scale, RES_SCALE.y * emuenv.manual_dpi_scale);
 
     const auto BUTTON_SIZE = ImVec2(310.f * SCALE.x, 46.f * SCALE.y);
     const auto INFORMATION_BAR_HEIGHT = 32.f * SCALE.y;
@@ -691,7 +692,7 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
                 gui.user_backgrounds.erase(delete_user_background);
                 gui.user_backgrounds_infos.erase(delete_user_background);
                 if (!gui.users[emuenv.io.user_id].backgrounds.empty())
-                    gui.current_user_bg = gui.current_user_bg % uint64_t(gui.user_backgrounds.size());
+                    gui.current_user_bg = gui.current_user_bg % gui.user_backgrounds.size();
                 else if (!gui.theme_backgrounds.empty())
                     gui.users[emuenv.io.user_id].use_theme_bg = true;
                 save_user(gui, emuenv, emuenv.io.user_id);
@@ -784,7 +785,7 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
                 };
 
                 for (auto f = 0; f < 3; f++) {
-                    auto date_format_value = SceSystemParamDateFormat(f);
+                    auto date_format_value = static_cast<SceSystemParamDateFormat>(f);
                     const auto date_format_str = get_date_format_sting(date_format_value);
                     ImGui::PushID(date_format_str.c_str());
                     ImGui::SetCursorPosY((WINDOW_SIZE.y / 2.f) - INFORMATION_BAR_HEIGHT - (SIZE_PUPUP_SELECT * 1.5f) + (SIZE_PUPUP_SELECT * f));
@@ -930,7 +931,7 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
                 title = language.input_language["title"];
                 ImGui::SetWindowFontScale(1.2f);
                 ImGui::Columns(2, nullptr, false);
-                ImGui::SetColumnWidth(0, 600.f * emuenv.dpi_scale);
+                ImGui::SetColumnWidth(0, 600.f * emuenv.manual_dpi_scale);
                 ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.f, 0.5f));
                 if (ImGui::Selectable(keyboards_str, false, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0.f, SIZE_SELECT)))
                     sub_menu = SubMenu::SELECT_KEYBOARDS;
@@ -947,13 +948,13 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
                 if (selected.empty()) {
                     title = keyboards_str;
                     ImGui::Columns(3, nullptr, false);
-                    ImGui::SetColumnWidth(0, 40.f * emuenv.dpi_scale);
-                    ImGui::SetColumnWidth(1, 560.f * emuenv.dpi_scale);
+                    ImGui::SetColumnWidth(0, 40.f * emuenv.manual_dpi_scale);
+                    ImGui::SetColumnWidth(1, 560.f * emuenv.manual_dpi_scale);
                     for (const auto &lang : emuenv.ime.lang.ime_keyboards) {
                         ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.f, 0.5f));
                         ImGui::PushID(lang.first);
                         ImGui::SetWindowFontScale(1.f);
-                        const auto is_lang_enable = vector_utils::contains(emuenv.cfg.ime_langs, uint64_t(lang.first));
+                        const auto is_lang_enable = vector_utils::contains(emuenv.cfg.ime_langs, static_cast<uint64_t>(lang.first));
                         if (ImGui::Selectable(is_lang_enable ? "V" : "##lang", false, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0.f, SIZE_SELECT)))
                             selected = std::to_string(lang.first);
                         ImGui::NextColumn();
@@ -971,7 +972,7 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
                     }
                     ImGui::Columns(1);
                 } else {
-                    SceImeLanguage lang_select = SceImeLanguage(string_utils::stoi_def(selected, 0, "language"));
+                    SceImeLanguage lang_select = static_cast<SceImeLanguage>(string_utils::stoi_def(selected, 0, "language"));
                     title = get_ime_lang_index(emuenv.ime, lang_select)->second;
                     ImGui::SetWindowFontScale(1.2f);
                     ImGui::Columns(2, nullptr, false);
@@ -1021,7 +1022,7 @@ void draw_settings(GuiState &gui, EmuEnvState &emuenv) {
     // Back
     ImGui::SetWindowFontScale(1.2f * RES_SCALE.x);
     ImGui::SetCursorPos(ImVec2(6.f * SCALE.x, WINDOW_SIZE.y - (52.f * SCALE.y)));
-    if (ImGui::Button("Back", ImVec2(64.f * SCALE.x, 40.f * SCALE.y)) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_circle))) {
+    if (ImGui::Button("<<", ImVec2(64.f * SCALE.x, 40.f * SCALE.y)) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_circle))) {
         if (settings_menu != SettingsMenu::SELECT) {
             if (menu != Menu::UNDEFINED) {
                 if (!selected.empty()) {

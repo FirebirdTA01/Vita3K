@@ -1,5 +1,5 @@
 ﻿// Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -302,7 +302,7 @@ void update_notice_info(GuiState &gui, EmuEnvState &emuenv, const std::string &t
         const auto &trophy_data = gui.trophy_unlock_display_requests.back();
         info.id = trophy_data.np_com_id;
         info.content_id = trophy_data.trophy_id;
-        info.group = std::to_string(int(trophy_data.trophy_kind));
+        info.group = std::to_string(static_cast<int>(trophy_data.trophy_kind));
     }
     info.type = type;
     info.time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -350,11 +350,11 @@ static std::string get_notice_time(GuiState &gui, EmuEnvState &emuenv, const tim
     } else {
         auto &lang = gui.lang.common.main;
         if (diff_time >= (hour * 2))
-            date = fmt::format(fmt::runtime(lang["hours_ago"]), uint32_t(diff_time / hour));
+            date = fmt::format(fmt::runtime(lang["hours_ago"]), static_cast<uint32_t>(diff_time / hour));
         else if (diff_time >= hour)
             date = lang["one_hour_ago"];
         else if (diff_time >= (minute * 2))
-            date = fmt::format(fmt::runtime(lang["minutes_ago"]), uint32_t(diff_time / 60));
+            date = fmt::format(fmt::runtime(lang["minutes_ago"]), static_cast<uint32_t>(diff_time / 60));
         else
             date = lang["one_minute_ago"];
     }
@@ -364,10 +364,10 @@ static std::string get_notice_time(GuiState &gui, EmuEnvState &emuenv, const tim
 
 static void draw_notice_info(GuiState &gui, EmuEnvState &emuenv) {
     static bool notice_info_state;
-    const ImVec2 VIEWPORT_POS(emuenv.viewport_pos.x, emuenv.viewport_pos.y);
-    const ImVec2 VIEWPORT_SIZE(emuenv.viewport_size.x, emuenv.viewport_size.y);
-    const ImVec2 RES_SCALE(VIEWPORT_SIZE.x / emuenv.res_width_dpi_scale, VIEWPORT_SIZE.y / emuenv.res_height_dpi_scale);
-    const ImVec2 SCALE(RES_SCALE.x * emuenv.dpi_scale, RES_SCALE.y * emuenv.dpi_scale);
+    const ImVec2 VIEWPORT_POS(emuenv.logical_viewport_pos.x, emuenv.logical_viewport_pos.y);
+    const ImVec2 VIEWPORT_SIZE(emuenv.logical_viewport_size.x, emuenv.logical_viewport_size.y);
+    const ImVec2 RES_SCALE(emuenv.gui_scale.x, emuenv.gui_scale.y);
+    const ImVec2 SCALE(RES_SCALE.x * emuenv.manual_dpi_scale, RES_SCALE.y * emuenv.manual_dpi_scale);
 
     const auto VIEWPORT_WIDTH_POS_MAX(VIEWPORT_POS.x + VIEWPORT_SIZE.x);
 
@@ -394,7 +394,7 @@ static void draw_notice_info(GuiState &gui, EmuEnvState &emuenv) {
         const auto FONT_SCALE = 40.f * SCALE.x;
         const auto NOTICE_COUNT_FONT_SCALE = FONT_SCALE / 40.f;
         const auto NOTICE_COUNT_SIZE = ImGui::CalcTextSize(std::to_string(notice_info_count_new).c_str()).x * NOTICE_COUNT_FONT_SCALE;
-        draw_list->AddText(gui.vita_font, FONT_SCALE, ImVec2(VIEWPORT_WIDTH_POS_MAX - (NOTICE_SIZE.x / 2.f) - (NOTICE_COUNT_SIZE / 2.f) + (12.f * SCALE.x), VIEWPORT_POS.y + (15.f * SCALE.y)), NOTICE_COLOR, std::to_string(notice_info_count_new).c_str());
+        draw_list->AddText(gui.vita_font[emuenv.current_font_level], FONT_SCALE, ImVec2(VIEWPORT_WIDTH_POS_MAX - (NOTICE_SIZE.x / 2.f) - (NOTICE_COUNT_SIZE / 2.f) + (12.f * SCALE.x), VIEWPORT_POS.y + (15.f * SCALE.y)), NOTICE_COLOR, std::to_string(notice_info_count_new).c_str());
     } else {
         if (gui.theme_information_bar_notice.contains(NoticeIcon::NO))
             draw_list->AddImage(gui.theme_information_bar_notice[NoticeIcon::NO], NOTICE_ICON_POS, NOTICE_ICON_POS_MAX);
@@ -411,7 +411,7 @@ static void draw_notice_info(GuiState &gui, EmuEnvState &emuenv) {
     }
 
     if (notice_info_state) {
-        const auto POPUP_SIZE = notice_info.empty() ? ImVec2(412.f * SCALE.x, 86.f * SCALE.y) : ImVec2(782.f * SCALE.x, notice_info.size() < 5 ? 22.f * emuenv.dpi_scale + ((80.f * SCALE.y) * notice_info.size() + (10.f * (notice_info.size() - 1) * emuenv.dpi_scale)) : 464.f * SCALE.y);
+        const auto POPUP_SIZE = notice_info.empty() ? ImVec2(412.f * SCALE.x, 86.f * SCALE.y) : ImVec2(782.f * SCALE.x, notice_info.size() < 5 ? 22.f * emuenv.manual_dpi_scale + ((80.f * SCALE.y) * notice_info.size() + (10.f * (notice_info.size() - 1) * emuenv.manual_dpi_scale)) : 464.f * SCALE.y);
         const auto POPUP_POS = ImVec2(VIEWPORT_POS.x + (notice_info.empty() ? VIEWPORT_SIZE.x - (502.f * SCALE.y) : (VIEWPORT_SIZE.x / 2.f) - (POPUP_SIZE.x / 2.f)), VIEWPORT_POS.y + (56.f * SCALE.y));
         const auto POPUP_BG_COLOR = notice_info.empty() ? GUI_COLOR_TEXT : GUI_SMOOTH_GRAY;
 
@@ -540,10 +540,10 @@ static void draw_notice_info(GuiState &gui, EmuEnvState &emuenv) {
 }
 
 void draw_information_bar(GuiState &gui, EmuEnvState &emuenv) {
-    const ImVec2 VIEWPORT_POS(emuenv.viewport_pos.x, emuenv.viewport_pos.y);
-    const ImVec2 VIEWPORT_SIZE(emuenv.viewport_size.x, emuenv.viewport_size.y);
-    const ImVec2 RES_SCALE(VIEWPORT_SIZE.x / emuenv.res_width_dpi_scale, VIEWPORT_SIZE.y / emuenv.res_height_dpi_scale);
-    const ImVec2 SCALE(RES_SCALE.x * emuenv.dpi_scale, RES_SCALE.y * emuenv.dpi_scale);
+    const ImVec2 VIEWPORT_POS(emuenv.logical_viewport_pos.x, emuenv.logical_viewport_pos.y);
+    const ImVec2 VIEWPORT_SIZE(emuenv.logical_viewport_size.x, emuenv.logical_viewport_size.y);
+    const ImVec2 RES_SCALE(emuenv.gui_scale.x, emuenv.gui_scale.y);
+    const ImVec2 SCALE(RES_SCALE.x * emuenv.manual_dpi_scale, RES_SCALE.y * emuenv.manual_dpi_scale);
 
     const ImVec2 INFO_BAR_SIZE(VIEWPORT_SIZE.x, 32.f * SCALE.y);
 
@@ -569,7 +569,7 @@ void draw_information_bar(GuiState &gui, EmuEnvState &emuenv) {
     draw_list->AddRectFilled(VIEWPORT_POS, INFO_BAR_POS_MAX, is_theme_color ? bar_color : DEFAULT_BAR_COLOR, 0.f, ImDrawFlags_RoundCornersAll);
 
     if (gui.vita_area.home_screen || gui.vita_area.live_area_screen) {
-        const auto HOME_ICON_POS_CENTER = VIEWPORT_POS.x + (INFO_BAR_SIZE.x / 2.f) - (32.f * ((float(gui.live_area_current_open_apps_list.size())) / 2.f)) * SCALE.x;
+        const auto HOME_ICON_POS_CENTER = VIEWPORT_POS.x + (INFO_BAR_SIZE.x / 2.f) - (32.f * (static_cast<float>(gui.live_area_current_open_apps_list.size()) / 2.f)) * SCALE.x;
         const auto APP_IS_OPEN = gui.live_area_app_current_open >= 0;
 
         // Draw Home Icon
@@ -590,7 +590,7 @@ void draw_information_bar(GuiState &gui, EmuEnvState &emuenv) {
         draw_list->AddRectFilled(ImVec2(HOME_ICON_POS_CENTER - (3.f * SCALE.x), VIEWPORT_POS.y + (18.5f * SCALE.y)), ImVec2(HOME_ICON_POS_CENTER + (3.f * SCALE.x), VIEWPORT_POS.y + (26.f * SCALE.y)), bar_color);
 
         // Draw App Icon
-        const float decal_app_icon_pos = 34.f * ((float(gui.live_area_current_open_apps_list.size()) - 2) / 2.f);
+        const float decal_app_icon_pos = 34.f * ((static_cast<float>(gui.live_area_current_open_apps_list.size()) - 2) / 2.f);
         const auto ICON_SIZE_SCALE = 28.f * SCALE.x;
 
         for (auto a = 0; a < gui.live_area_current_open_apps_list.size(); a++) {
@@ -613,9 +613,9 @@ void draw_information_bar(GuiState &gui, EmuEnvState &emuenv) {
     }
 
     constexpr auto PIX_FONT_SCALE = 19.2f / 24.f;
-    const auto DEFAULT_FONT_SCALE = ImGui::GetFontSize() / (19.2f * emuenv.dpi_scale);
-    const auto CLOCK_DEFAULT_FONT_SCALE = (24.f * emuenv.dpi_scale) * DEFAULT_FONT_SCALE;
-    const auto DAY_MOMENT_DEFAULT_FONT_SCALE = (18.f * emuenv.dpi_scale) * DEFAULT_FONT_SCALE;
+    const auto DEFAULT_FONT_SCALE = ImGui::GetFontSize() / (19.2f * emuenv.manual_dpi_scale);
+    const auto CLOCK_DEFAULT_FONT_SCALE = (24.f * emuenv.manual_dpi_scale) * DEFAULT_FONT_SCALE;
+    const auto DAY_MOMENT_DEFAULT_FONT_SCALE = (18.f * emuenv.manual_dpi_scale) * DEFAULT_FONT_SCALE;
     const auto CLOCK_FONT_SIZE_SCALE = CLOCK_DEFAULT_FONT_SCALE / ImGui::GetFontSize();
     const auto DAY_MOMENT_FONT_SIZE_SCALE = DAY_MOMENT_DEFAULT_FONT_SCALE / ImGui::GetFontSize();
 
@@ -635,9 +635,9 @@ void draw_information_bar(GuiState &gui, EmuEnvState &emuenv) {
     const auto DAY_MOMENT_POS = ImVec2(CLOCK_POS.x + CLOCK_SIZE_SCALE.x + (6.f * SCALE.x), CLOCK_POS.y + (CLOCK_SIZE_SCALE.y - DAY_MOMENT_SIZE_SCALE.y));
 
     // Draw clock
-    draw_list->AddText(gui.vita_font, CLOCK_DEFAULT_FONT_SCALE * RES_SCALE.x, CLOCK_POS, is_theme_color ? indicator_color : DEFAULT_INDICATOR_COLOR, DATE_TIME[DateTime::CLOCK].c_str());
+    draw_list->AddText(gui.vita_font[emuenv.current_font_level], CLOCK_DEFAULT_FONT_SCALE * RES_SCALE.x, CLOCK_POS, is_theme_color ? indicator_color : DEFAULT_INDICATOR_COLOR, DATE_TIME[DateTime::CLOCK].c_str());
     if (emuenv.io.user_id.empty() || is_12_hour_format)
-        draw_list->AddText(gui.vita_font, DAY_MOMENT_DEFAULT_FONT_SCALE * RES_SCALE.x, DAY_MOMENT_POS, is_theme_color ? indicator_color : DEFAULT_INDICATOR_COLOR, DATE_TIME[DateTime::DAY_MOMENT].c_str());
+        draw_list->AddText(gui.vita_font[emuenv.current_font_level], DAY_MOMENT_DEFAULT_FONT_SCALE * RES_SCALE.x, DAY_MOMENT_POS, is_theme_color ? indicator_color : DEFAULT_INDICATOR_COLOR, DATE_TIME[DateTime::DAY_MOMENT].c_str());
 
     // Set full size and position of battery
     const auto FULL_BATTERY_SIZE = 38.f * SCALE.x;
