@@ -172,7 +172,15 @@ bool is_valid_guest_addr(const MemState &state, Address guest_addr) {
 }
 
 bool is_valid_guest_addr_range(const MemState &state, Address guest_start, Address guest_end) {
-    return guest_start >= state.elf_base && (guest_end - guest_start) <= (state.elf_base + TOTAL_MEM_SIZE);
+    // Validate that the entire guest address range resides within the Vita memory space
+    if (guest_start < state.elf_base)
+        return false;
+
+    if (guest_end < guest_start)
+        return false;
+
+    const Address max_guest = state.elf_base + TOTAL_MEM_SIZE;
+    return guest_end <= max_guest;
 }
 
 static Address alloc_inner(MemState &state, uint32_t start_page, uint32_t page_count, const char *name, const bool force) {
