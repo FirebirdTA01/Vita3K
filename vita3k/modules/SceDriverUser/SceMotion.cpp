@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -39,7 +39,6 @@ EXPORT(int, sceMotionGetBasicOrientation, SceFVector3 *basicOrientation) {
     }
 
     std::lock_guard<std::mutex> guard(emuenv.motion.mutex);
-    SceFVector3 accelerometer = get_acceleration(emuenv.motion);
 
     *basicOrientation = get_basic_orientation(emuenv.motion);
 

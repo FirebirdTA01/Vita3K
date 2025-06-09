@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ VKContext::VKContext(VKState &state, MemState &mem)
     // for the index buffer, we only have 16 or 32bit types
     index_stream_ring_buffer.alignment = sizeof(uint32_t);
     // for the vertex buffer, nothing should need more alignment than a vec4
-    index_stream_ring_buffer.alignment = 4 * sizeof(float);
+    vertex_stream_ring_buffer.alignment = 4 * sizeof(float);
 
     const uint32_t uniform_alignment = static_cast<uint32_t>(state.physical_device_properties.limits.minUniformBufferOffsetAlignment);
     const uint32_t storage_alignment = static_cast<uint32_t>(state.physical_device_properties.limits.minStorageBufferOffsetAlignment);
@@ -147,6 +147,11 @@ VKContext::VKContext(VKState &state, MemState &mem)
 
         state.device.updateDescriptorSets(nb_descriptor, write_descr.data(), 0, nullptr);
     }
+}
+
+VKContext::~VKContext() {
+    if (gpu_request_wait_thread.joinable())
+        gpu_request_wait_thread.join();
 }
 
 VKRenderTarget::VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &params)

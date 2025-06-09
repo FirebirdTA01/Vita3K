@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -4204,6 +4204,7 @@ NID(sceKernelStartThread, 0xF08DE149)
 NID(sceKernelStopModule, 0x3B2CBA09)
 NID(sceKernelStopUnloadModule, 0x2415F8A4)
 NID(sceKernelTryLockLwMutex, 0xA6A2C915)
+NID(sceKernelTryLockLwMutex_16XX, 0x9EF798C1)
 NID(sceKernelTryReceiveMsgPipe, 0x5615B006)
 NID(sceKernelTryReceiveMsgPipeVector, 0x86ECC0FF)
 NID(sceKernelTrySendMsgPipe, 0xDFC670E0)
@@ -5205,7 +5206,7 @@ NID(sceNgsVoiceDefGetEqBussInternal, 0x251F58F5)
 NID(sceNgsVoiceDefGetMasterBussInternal, 0xE204946B)
 NID(sceNgsVoiceDefGetMixerBussInternal, 0xB8636646)
 NID(sceNgsVoiceDefGetPauserBussInternal, 0x96FE3B3C)
-NID(sceNgsVoiceDefGetPitchshiftBussInternal, 0x1876116F)
+NID(sceNgsVoiceDefGetPitchShiftBussInternal, 0x1876116F)
 NID(sceNgsVoiceDefGetReverbBussInternal, 0x6A637E1C)
 NID(sceNgsVoiceDefGetSasEmuVoiceInternal, 0x3051D319)
 NID(sceNgsVoiceDefGetScreamVoiceAT9Internal, 0x10457017)

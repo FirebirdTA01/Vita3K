@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ namespace renderer::gl {
 bool ScreenRenderer::init(const fs::path &static_assets) {
     glGenTextures(1, &m_screen_texture);
 
-    fs::path builtin_shaders_path = static_assets / "shaders-builtin/opengl";
+    const auto builtin_shaders_path = static_assets / "shaders-builtin/opengl";
 
     const auto render_main_path_vert = builtin_shaders_path / "render_main.vert";
     const auto render_main_path_frag = builtin_shaders_path / "render_main.frag";
@@ -78,7 +78,7 @@ bool ScreenRenderer::init(const fs::path &static_assets) {
     );
     glEnableVertexAttribArray(uvAttrib);
 
-    glClearColor(0.125490203f, 0.698039234f, 0.666666687f, 1.0f);
+    glClearColor(32.0f / 255.0f, 178.0f / 255.0f, 170.0f / 255.0f, 1.0f);
     glClearDepth(1.0);
 
     return true;

@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,17 +32,17 @@ struct VKState;
 class ScreenRenderer {
 public:
     VKState &state;
-    SDL_Window *window;
+    SDL_Window *window{};
 
     vk::SurfaceKHR surface;
     vk::SwapchainKHR swapchain;
 
     vk::SurfaceCapabilitiesKHR surface_capabilities;
     vk::SurfaceFormatKHR surface_format;
-    vk::PresentModeKHR present_mode;
+    vk::PresentModeKHR present_mode{};
 
     vk::Extent2D extent;
-    uint32_t swapchain_size;
+    uint32_t swapchain_size{};
     std::vector<vk::Image> swapchain_images;
     std::vector<vk::ImageView> swapchain_views;
     std::vector<vk::Framebuffer> swapchain_framebuffers;

@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -71,6 +71,10 @@ fs::path path_concat(const fs::path &path1, const fs::path &path2);
  * \param size size of data buffer in bytes
  */
 void dump_data(const fs::path &path, const void *data, const std::streamsize size);
+
+bool read_data(const fs::path &path, std::vector<uint8_t> &data);
+bool read_data(const fs::path &path, std::vector<int8_t> &data);
+bool read_data(const fs::path &path, std::vector<char> &data);
 
 } // namespace fs_utils
 

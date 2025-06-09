@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -156,6 +156,7 @@ int ThreadState::start(SceSize arglen, const Ptr<void> argp, bool run_entry_call
         kernel.debugger.wait_for_debugger = false;
     } else {
         to_do = ThreadToDo::run;
+        status = ThreadStatus::run;
     }
     something_to_do.notify_one();
 
@@ -415,15 +416,15 @@ void ThreadState::resume(bool step) {
 std::string ThreadState::log_stack_traceback() const {
     constexpr Address START_OFFSET = 0;
     constexpr Address END_OFFSET = 1024;
-    std::stringstream ss;
+    std::string str;
     const Address sp = read_sp(*cpu);
     for (Address addr = sp - START_OFFSET; addr <= sp + END_OFFSET; addr += 4) {
         if (Ptr<uint32_t>(addr).valid(mem)) {
             const Address value = *Ptr<uint32_t>(addr).get(mem);
             const auto mod = kernel.find_module_by_addr(value);
             if (mod)
-                ss << fmt::format("{} (module: {})\n", log_hex(value), mod->module_name);
+                fmt::format_to(std::back_inserter(str), "0x{:X} (module: {})\n", value, mod->module_name);
         }
     }
-    return ss.str();
+    return str;
 }

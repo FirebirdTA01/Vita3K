@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -130,11 +130,11 @@ GLuint GLSurfaceCache::retrieve_color_surface_texture_handle(const State &state,
         }
 
         if (cache_probably_freed) {
-            for (auto ite = framebuffer_array.begin(); ite != framebuffer_array.end();) {
-                if ((ite->first & 0xFFFFFFFF) == key) {
-                    ite = framebuffer_array.erase(ite);
+            for (auto fbuf_ite = framebuffer_array.begin(); fbuf_ite != framebuffer_array.end();) {
+                if ((fbuf_ite->first & 0xFFFFFFFF) == key) {
+                    fbuf_ite = framebuffer_array.erase(fbuf_ite);
                 } else {
-                    ++ite;
+                    ++fbuf_ite;
                 }
             }
             // Clear out. We will recreate later

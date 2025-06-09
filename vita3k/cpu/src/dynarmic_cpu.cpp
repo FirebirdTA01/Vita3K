@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 
 #include <dynarmic/frontend/A32/a32_ir_emitter.h>
 #include <dynarmic/interface/A32/coprocessor.h>
+#include <dynarmic/interface/exclusive_monitor.h>
 
 #include <memory>
 #include <optional>

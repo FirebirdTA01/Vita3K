@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -129,7 +129,7 @@ enum class NpComIdSortType {
     PROGRESS
 };
 static NpComIdSortType np_com_id_sort;
-bool show_hidden_trophy = false;
+static bool show_hidden_trophy = false;
 
 void init_trophy_collection(GuiState &gui, EmuEnvState &emuenv) {
     const auto TROPHY_PATH{ emuenv.pref_path / "ux0/user" / emuenv.io.user_id / "trophy" };
@@ -412,10 +412,10 @@ void open_trophy_unlocked(GuiState &gui, EmuEnvState &emuenv, const std::string 
 }
 
 void draw_trophy_collection(GuiState &gui, EmuEnvState &emuenv) {
-    const ImVec2 VIEWPORT_POS(emuenv.viewport_pos.x, emuenv.viewport_pos.y);
-    const ImVec2 VIEWPORT_SIZE(emuenv.viewport_size.x, emuenv.viewport_size.y);
-    const ImVec2 RES_SCALE(VIEWPORT_SIZE.x / emuenv.res_width_dpi_scale, VIEWPORT_SIZE.y / emuenv.res_height_dpi_scale);
-    const ImVec2 SCALE(RES_SCALE.x * emuenv.dpi_scale, RES_SCALE.y * emuenv.dpi_scale);
+    const ImVec2 VIEWPORT_POS(emuenv.logical_viewport_pos.x, emuenv.logical_viewport_pos.y);
+    const ImVec2 VIEWPORT_SIZE(emuenv.logical_viewport_size.x, emuenv.logical_viewport_size.y);
+    const ImVec2 RES_SCALE(emuenv.gui_scale.x, emuenv.gui_scale.y);
+    const ImVec2 SCALE(RES_SCALE.x * emuenv.manual_dpi_scale, RES_SCALE.y * emuenv.manual_dpi_scale);
 
     const auto INFORMATION_BAR_HEIGHT = 32.f * SCALE.y;
 
@@ -769,7 +769,7 @@ void draw_trophy_collection(GuiState &gui, EmuEnvState &emuenv) {
 
     // Back
     ImGui::SetCursorPos(ImVec2(8.f * SCALE.x, WINDOW_SIZE.y - (52.f * SCALE.y)));
-    if (ImGui::Button("Back", ImVec2(64.f * SCALE.x, 40.f * SCALE.y)) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_circle))) {
+    if (ImGui::Button("<<", ImVec2(64.f * SCALE.x, 40.f * SCALE.y)) || ImGui::IsKeyPressed(static_cast<ImGuiKey>(emuenv.cfg.keyboard_button_circle))) {
         if (!np_com_id_selected.empty()) {
             if (detail_np_com_id) {
                 detail_np_com_id = false;

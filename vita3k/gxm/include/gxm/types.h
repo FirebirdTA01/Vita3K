@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -410,6 +410,7 @@ enum SceGxmTextureBaseFormat : uint32_t {
     SCE_GXM_TEXTURE_BASE_FORMAT_UBC6H = 0xFF000001,
     SCE_GXM_TEXTURE_BASE_FORMAT_SBC6H = 0xFF000002,
     SCE_GXM_TEXTURE_BASE_FORMAT_UBC7 = 0xFF000003,
+    SCE_GXM_TEXTURE_BASE_FORMAT_INVALID = 0xFFFFFFFF,
 };
 
 template <typename T>

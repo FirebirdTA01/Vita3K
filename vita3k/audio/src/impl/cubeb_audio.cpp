@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -157,7 +157,7 @@ void CubebAudioAdapter::set_volume(AudioOutPort &out_port, float volume) {
 }
 
 void CubebAudioAdapter::switch_state(const bool pause) {
-    for (auto [_, out_port] : state.out_ports) {
+    for (auto &[_, out_port] : state.out_ports) {
         CubebAudioOutPort &port = static_cast<CubebAudioOutPort &>(*out_port);
         if (pause)
             cubeb_stream_stop(port.out_stream);

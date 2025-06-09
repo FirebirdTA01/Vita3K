@@ -1,5 +1,5 @@
 // Vita3K emulator project
-// Copyright (C) 2024 Vita3K team
+// Copyright (C) 2025 Vita3K team
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -72,6 +72,6 @@ void spirv_disasm_print(const usse::SpirvCode &spirv_binary, std::string *spirv_
 GeneratedShader convert_gxp(const SceGxmProgram &program, const std::string &shader_hash, const FeatureState &features, const Target target, const Hints &hints, bool maskupdate = false,
     bool force_shader_debug = false, const std::function<bool(const std::string &ext, const std::string &dump)> &dumper = nullptr);
 
-void convert_gxp_to_glsl_from_filepath(const std::string &shader_filepath);
+void convert_gxp_to_glsl_from_filepath(const std::string &shader_filepath_utf8);
 
 } // namespace shader
