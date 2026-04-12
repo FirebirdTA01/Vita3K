@@ -413,9 +413,13 @@ Address ThreadState::stack_top() const {
 }
 
 void ThreadState::suspend() {
-    assert(to_do == ThreadToDo::run);
     {
         const std::lock_guard<std::mutex> lock(mutex);
+        // Threads already parked in wait/suspend/dormant (or being removed)
+        // are halted from the debugger's perspective. Only force-stop one
+        // that is actively running user code.
+        if (to_do != ThreadToDo::run)
+            return;
         to_do = ThreadToDo::suspend;
     }
     stop(*cpu);

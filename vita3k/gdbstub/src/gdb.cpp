@@ -527,7 +527,14 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                         auto thread = pair.second;
                         if (thread->status == ThreadStatus::run) {
                             thread->suspend();
-                            thread->status_cond.wait(lock, [=]() { return thread->status == ThreadStatus::suspend || thread->status == ThreadStatus::dormant; });
+                            // A thread that was `run` when we peeked can race
+                            // into wait/dormant/suspend before suspend() takes
+                            // effect; any of those are fine as a stopped state.
+                            thread->status_cond.wait(lock, [=]() {
+                                return thread->status == ThreadStatus::suspend
+                                    || thread->status == ThreadStatus::dormant
+                                    || thread->status == ThreadStatus::wait;
+                            });
                         }
                     }
                 }
@@ -611,6 +618,12 @@ static std::string cmd_add_breakpoint(EmuEnvState &state, PacketCommand &command
     const uint32_t type = static_cast<uint32_t>(std::stol(content.substr(1, first - 1)));
     const uint32_t address = parse_hex(content.substr(first + 1, second - 1 - first));
     const uint32_t kind = static_cast<uint32_t>(std::stol(content.substr(second + 1, content.size() - second - 1)));
+
+    const uint32_t bp_size = (kind == 2) ? 2 : 4;
+    if (!check_memory_region(address, bp_size, state.mem)) {
+        LOG_WARN("GDB Server Breakpoint rejected — address {} not mapped.", log_hex(address));
+        return "E01";
+    }
 
     LOG_INFO("GDB Server New Breakpoint at {} ({}, {}).", log_hex(address), type, kind);
 
