@@ -232,62 +232,80 @@ static std::string cmd_get_current_thread(EmuEnvState &state, PacketCommand &com
     return "QC" + to_hex(state.gdb.current_thread);
 }
 
-static uint32_t fetch_reg(CPUState &state, uint32_t reg) {
-    if (reg <= 12) {
-        return read_reg(state, reg);
-    }
+// Default ARM register numbering (gdb without target.xml):
+//   0-15:  r0-r15           (4 bytes each)
+//   16-23: f0-f7            (12 bytes each, legacy FPA — we send zeros)
+//   24:    fps              (4 bytes, legacy FPA status — zero)
+//   25:    cpsr             (4 bytes)
+//   26-57: d0-d31           (8 bytes each, VFP double-precision)
+//   58:    fpscr            (4 bytes)
 
+static uint32_t fetch_core_reg(CPUState &state, uint32_t reg) {
+    if (reg <= 12)
+        return read_reg(state, reg);
     if (reg == 13)
         return read_sp(state);
     if (reg == 14)
         return read_lr(state);
     if (reg == 15)
         return read_pc(state);
-
-    if (reg <= 23) {
-        float value = read_float_reg(state, reg - 16);
-        return std::bit_cast<uint32_t>(value);
-    }
-
-    if (reg == 24)
-        return read_fpscr(state);
-    if (reg == 25)
-        return read_cpsr(state);
-
-    LOG_WARN("GDB Server Queried Invalid Register {}", reg);
     return 0;
 }
 
-static void modify_reg(CPUState &state, uint32_t reg, uint32_t value) {
-    if (reg <= 12) {
+static void write_core_reg(CPUState &state, uint32_t reg, uint32_t value) {
+    if (reg <= 12)
         write_reg(state, reg, value);
-        return;
-    }
-
-    if (reg == 13) {
+    else if (reg == 13)
         write_sp(state, value);
-        return;
-    }
-    if (reg == 14) {
+    else if (reg == 14)
         write_lr(state, value);
-        return;
-    }
-    if (reg == 15) {
+    else if (reg == 15)
         write_pc(state, value);
-        return;
-    }
+}
 
-    if (reg <= 23) {
-        write_float_reg(state, reg - 16, std::bit_cast<float>(value));
-        return;
+static std::string read_register_hex(CPUState &cpu, uint32_t reg) {
+    if (reg <= 15)
+        return be_hex(fetch_core_reg(cpu, reg));
+    if (reg <= 23)
+        return "000000000000000000000000"; // FPA f0-f7: 12 bytes of zero
+    if (reg == 24)
+        return "00000000"; // FPA fps: zero
+    if (reg == 25)
+        return be_hex(read_cpsr(cpu));
+    if (reg <= 57) {
+        uint32_t d_idx = reg - 26;
+        uint32_t lo = std::bit_cast<uint32_t>(read_float_reg(cpu, d_idx * 2));
+        uint32_t hi = std::bit_cast<uint32_t>(read_float_reg(cpu, d_idx * 2 + 1));
+        return be_hex(lo) + be_hex(hi);
     }
+    if (reg == 58)
+        return be_hex(read_fpscr(cpu));
 
-    if (reg == 24) {
-        write_fpscr(state, value);
+    LOG_WARN("GDB Server Queried Invalid Register {}", reg);
+    return "00000000";
+}
+
+static void write_register_from_hex(CPUState &cpu, uint32_t reg, const std::string &hex) {
+    if (reg <= 15) {
+        write_core_reg(cpu, reg, ntohl(parse_hex(hex.substr(0, 8))));
         return;
     }
+    if (reg <= 24)
+        return; // FPA registers are read-only zeros
     if (reg == 25) {
-        write_cpsr(state, value);
+        write_cpsr(cpu, ntohl(parse_hex(hex.substr(0, 8))));
+        return;
+    }
+    if (reg <= 57) {
+        uint32_t d_idx = reg - 26;
+        uint32_t lo = ntohl(parse_hex(hex.substr(0, 8)));
+        uint32_t hi = ntohl(parse_hex(hex.substr(8, 8)));
+        write_float_reg(cpu, d_idx * 2, std::bit_cast<float>(lo));
+        write_float_reg(cpu, d_idx * 2 + 1, std::bit_cast<float>(hi));
+        return;
+    }
+    if (reg == 58) {
+        write_fpscr(cpu, ntohl(parse_hex(hex.substr(0, 8))));
         return;
     }
 
@@ -302,12 +320,16 @@ static std::string cmd_read_registers(EmuEnvState &state, PacketCommand &command
 
     CPUState &cpu = *state.kernel.threads[state.gdb.current_thread]->cpu.get();
 
+    // g-packet: r0-r15, f0-f7 (FPA zeros), fps (zero), cpsr = 168 bytes = 336 hex
     std::string str;
-    str.reserve(16 * 8);
+    str.reserve(336);
 
-    for (uint32_t a = 0; a < 16; a++) {
-        str += be_hex(fetch_reg(cpu, a));
-    }
+    for (uint32_t a = 0; a < 16; a++)
+        str += be_hex(fetch_core_reg(cpu, a));
+    for (uint32_t a = 0; a < 8; a++)
+        str += "000000000000000000000000"; // f0-f7: 12 bytes each
+    str += "00000000"; // fps
+    str += be_hex(read_cpsr(cpu));
 
     return str;
 }
@@ -320,12 +342,18 @@ static std::string cmd_write_registers(EmuEnvState &state, PacketCommand &comman
 
     CPUState &cpu = *state.kernel.threads[state.gdb.current_thread]->cpu.get();
 
+    // G-packet layout: r0-r15 (128 hex), f0-f7 (192 hex), fps (8 hex), cpsr (8 hex) = 336 hex
     const std::string content = content_string(command).substr(1);
+    uint32_t offset = 0;
 
-    for (uint32_t a = 0; a < content.size() / 8; a++) {
-        uint32_t value = parse_hex(content.substr(a * 8, 8));
-        modify_reg(cpu, a, value);
-    }
+    for (uint32_t a = 0; a < 16 && offset + 8 <= content.size(); a++, offset += 8)
+        write_core_reg(cpu, a, ntohl(parse_hex(content.substr(offset, 8))));
+
+    // Skip f0-f7 (8 × 24 hex = 192) + fps (8 hex)
+    offset += 192 + 8;
+
+    if (offset + 8 <= content.size())
+        write_cpsr(cpu, ntohl(parse_hex(content.substr(offset, 8))));
 
     return "OK";
 }
@@ -341,7 +369,7 @@ static std::string cmd_read_register(EmuEnvState &state, PacketCommand &command)
     const std::string content = content_string(command);
     uint32_t reg = parse_hex(content.substr(1, content.size() - 1));
 
-    return be_hex(fetch_reg(cpu, reg));
+    return read_register_hex(cpu, reg);
 }
 
 static std::string cmd_write_register(EmuEnvState &state, PacketCommand &command) {
@@ -355,8 +383,8 @@ static std::string cmd_write_register(EmuEnvState &state, PacketCommand &command
     const std::string content = content_string(command);
     size_t equal_index = content.find('=');
     uint32_t reg = parse_hex(content.substr(1, equal_index - 1));
-    uint32_t value = parse_hex(content.substr(equal_index + 1));
-    modify_reg(cpu, reg, value);
+    std::string hex_value = content.substr(equal_index + 1);
+    write_register_from_hex(cpu, reg, hex_value);
 
     return "OK";
 }
