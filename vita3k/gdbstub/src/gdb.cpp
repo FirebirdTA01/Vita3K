@@ -623,7 +623,24 @@ static std::string cmd_write_binary(EmuEnvState &state, PacketCommand &command) 
     return "OK";
 }
 
-static std::string cmd_detach(EmuEnvState &state, PacketCommand &command) { return "OK"; }
+static std::string cmd_detach(EmuEnvState &state, PacketCommand &command) {
+    state.kernel.debugger.remove_all_breakpoints(state.mem);
+
+    auto lock = std::unique_lock(state.kernel.mutex);
+    for (const auto &pair : state.kernel.threads) {
+        auto &thread = pair.second;
+        if (thread->status == ThreadStatus::suspend) {
+            lock.unlock();
+            thread->resume();
+            lock.lock();
+        }
+    }
+
+    state.gdb.inferior_thread = 0;
+    state.gdb.current_thread = 0;
+    LOG_INFO("GDB Server Detached — breakpoints removed, threads resumed.");
+    return "OK";
+}
 
 static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
     const std::string content = content_string(command);
@@ -915,6 +932,7 @@ const static PacketFunctionBundle functions[] = {
     { "Q", cmd_unimplemented },
 
     // Shutdown
+    { "D", cmd_detach },
     { "d", cmd_unimplemented },
     { "r", cmd_unimplemented },
     { "R", cmd_unimplemented },
@@ -1023,21 +1041,33 @@ static int64_t server_next(EmuEnvState &state) {
 }
 
 static void server_listen(EmuEnvState &state) {
-    state.gdb.client_socket = accept(state.gdb.listen_socket, nullptr, nullptr);
+    while (!state.gdb.server_die) {
+        state.gdb.client_socket = accept(state.gdb.listen_socket, nullptr, nullptr);
 
-    if (state.gdb.client_socket == -1) {
-        LOG_ERROR("GDB Server Failed: Could not accept socket.");
-        return;
+        if (state.gdb.client_socket == -1) {
+            if (!state.gdb.server_die)
+                LOG_ERROR("GDB Server Failed: Could not accept socket.");
+            break;
+        }
+
+        LOG_INFO("GDB Server Received Connection");
+        state.gdb.client_has_xml = false;
+
+        int64_t status;
+        do {
+            status = server_next(state);
+        } while (status >= 0 && !state.gdb.server_die);
+
+#ifdef _WIN32
+        closesocket(state.gdb.client_socket);
+#else
+        close(state.gdb.client_socket);
+#endif
+        state.gdb.client_socket = BAD_SOCK;
+
+        if (!state.gdb.server_die)
+            LOG_INFO("GDB Server Client Disconnected, waiting for new connection...");
     }
-
-    LOG_INFO("GDB Server Received Connection");
-    state.gdb.client_has_xml = false;
-
-    int64_t status;
-
-    do {
-        status = server_next(state);
-    } while (status >= 0 && !state.gdb.server_die);
 
     server_close(state);
 }
