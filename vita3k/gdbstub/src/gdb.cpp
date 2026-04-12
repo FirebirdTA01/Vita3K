@@ -445,7 +445,6 @@ static std::string cmd_detach(EmuEnvState &state, PacketCommand &command) { retu
 
 static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
     const std::string content = content_string(command);
-    constexpr auto watch_delay = std::chrono::milliseconds(100);
 
     uint64_t index = 5;
     uint64_t next = 0;
@@ -480,9 +479,8 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                 // resume the world
                 {
                     auto lock = std::unique_lock(state.kernel.mutex);
-                    // Any threads that start after this point should run normally;
-                    // until the user's first continue, new threads stay parked.
                     state.kernel.debugger.wait_for_debugger = false;
+                    state.kernel.debugger.has_break = false;
                     for (const auto &pair : state.kernel.threads) {
                         auto &thread = pair.second;
                         if (thread->status == ThreadStatus::suspend) {
@@ -494,31 +492,55 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                         }
                     }
                 }
-                // wait until some threads trigger breakpoint
-                bool did_break = false;
-                while (!did_break) {
-                    auto lock = std::unique_lock(state.kernel.mutex);
 
-                    if (state.gdb.server_die)
-                        return "";
-                    for (const auto &[id, thread] : state.kernel.threads) {
-                        const auto thread_guard = std::lock_guard(thread->mutex);
-                        if (thread->status == ThreadStatus::suspend && hit_breakpoint(*thread->cpu)) {
-                            state.gdb.inferior_thread = id;
-                            did_break = true;
-                            break;
-                        }
+                // Wait for a breakpoint hit (condvar) or a Ctrl-C interrupt
+                // (\x03 byte on the socket). The condvar fires instantly on
+                // breakpoint; the 100ms timeout is only for the interrupt poll.
+                bool did_break = false;
+                bool interrupted = false;
+                while (!did_break && !interrupted && !state.gdb.server_die) {
+                    {
+                        std::unique_lock<std::mutex> bk_lock(state.kernel.debugger.break_mutex);
+                        state.kernel.debugger.break_cv.wait_for(bk_lock, std::chrono::milliseconds(100), [&]() {
+                            return state.kernel.debugger.has_break.load() || state.gdb.server_die;
+                        });
                     }
 
-                    lock.unlock();
+                    if (state.kernel.debugger.has_break.load()) {
+                        state.gdb.inferior_thread = state.kernel.debugger.break_thread_id;
+                        state.kernel.debugger.has_break = false;
+                        did_break = true;
+                    }
 
-                    std::this_thread::sleep_for(std::chrono::milliseconds(watch_delay));
+                    // Check for gdb interrupt (Ctrl-C sends raw \x03).
+                    if (!did_break) {
+                        fd_set read_set;
+                        timeval tv = { 0, 0 };
+                        FD_ZERO(&read_set);
+                        FD_SET(state.gdb.client_socket, &read_set);
+                        if (select(state.gdb.client_socket + 1, &read_set, nullptr, nullptr, &tv) > 0) {
+                            char byte;
+                            if (recv(state.gdb.client_socket, &byte, 1, MSG_PEEK) == 1 && byte == '\x03') {
+                                recv(state.gdb.client_socket, &byte, 1, 0);
+                                interrupted = true;
+                                LOG_INFO("GDB interrupt received (Ctrl-C)");
+                                auto lock = std::unique_lock(state.kernel.mutex);
+                                if (!state.kernel.threads.empty())
+                                    state.gdb.inferior_thread = state.kernel.threads.begin()->first;
+                            }
+                        }
+                    }
                 }
 
-                auto thread = state.kernel.get_thread(state.gdb.inferior_thread);
-                LOG_INFO("GDB Breakpoint trigger (thread name: {}, thread_id: {})", thread->name, thread->id);
-                LOG_INFO("PC: {} LR: {}", read_pc(*thread->cpu), read_lr(*thread->cpu));
-                LOG_INFO("{}", thread->log_stack_traceback());
+                if (state.gdb.server_die)
+                    return "";
+
+                if (did_break) {
+                    auto thread = state.kernel.get_thread(state.gdb.inferior_thread);
+                    LOG_INFO("GDB Breakpoint trigger (thread name: {}, thread_id: {})", thread->name, thread->id);
+                    LOG_INFO("PC: {} LR: {}", read_pc(*thread->cpu), read_lr(*thread->cpu));
+                    LOG_INFO("{}", thread->log_stack_traceback());
+                }
 
                 // stop the world
                 {
@@ -527,9 +549,6 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                         auto thread = pair.second;
                         if (thread->status == ThreadStatus::run) {
                             thread->suspend();
-                            // A thread that was `run` when we peeked can race
-                            // into wait/dormant/suspend before suspend() takes
-                            // effect; any of those are fine as a stopped state.
                             thread->status_cond.wait(lock, [=]() {
                                 return thread->status == ThreadStatus::suspend
                                     || thread->status == ThreadStatus::dormant
@@ -749,6 +768,9 @@ static int64_t server_next(EmuEnvState &state) {
 
     for (int64_t a = 0; a < length; a++) {
         switch (buffer[a]) {
+        case '\x03': {
+            break; // Ctrl-C interrupt, handled during vCont wait
+        }
         case '+': {
             break; // Cool.
         }

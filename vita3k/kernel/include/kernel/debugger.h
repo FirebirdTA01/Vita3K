@@ -20,6 +20,8 @@
 #include <mem/state.h>
 #include <mem/util.h>
 
+#include <atomic>
+#include <condition_variable>
 #include <map>
 
 constexpr uint32_t TRAMPOLINE_JUMPER_SVC = 0x54;
@@ -75,6 +77,15 @@ struct Debugger {
     void remove_trampoline(MemState &mem, uint32_t addr);
     Address get_watch_memory_addr(Address addr);
     void update_watches();
+
+    // GDB breakpoint notification: signaled from the thread loop when a
+    // thread hits a breakpoint and transitions to suspend.
+    void notify_breakpoint(SceUID thread_id);
+
+    std::mutex break_mutex;
+    std::condition_variable break_cv;
+    SceUID break_thread_id = 0;
+    std::atomic<bool> has_break{false};
 
 private:
     std::mutex mutex;

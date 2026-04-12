@@ -294,9 +294,14 @@ bool ThreadState::run_loop() {
                 break;
             }
 
-            if (hit_breakpoint(*cpu) || to_do == ThreadToDo::suspend) {
-                update_status(ThreadStatus::suspend);
-                to_do = ThreadToDo::wait;
+            {
+                bool bp = hit_breakpoint(*cpu);
+                if (bp || to_do == ThreadToDo::suspend) {
+                    update_status(ThreadStatus::suspend);
+                    to_do = ThreadToDo::wait;
+                    if (bp)
+                        kernel.debugger.notify_breakpoint(id);
+                }
             }
 
             if (call_level < run_level && run_level > 1)
