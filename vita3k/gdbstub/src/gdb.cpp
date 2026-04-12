@@ -480,6 +480,9 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                 // resume the world
                 {
                     auto lock = std::unique_lock(state.kernel.mutex);
+                    // Any threads that start after this point should run normally;
+                    // until the user's first continue, new threads stay parked.
+                    state.kernel.debugger.wait_for_debugger = false;
                     for (const auto &pair : state.kernel.threads) {
                         auto &thread = pair.second;
                         if (thread->status == ThreadStatus::suspend) {

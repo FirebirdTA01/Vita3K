@@ -153,7 +153,6 @@ int ThreadState::start(SceSize arglen, const Ptr<void> argp, bool run_entry_call
     if (kernel.debugger.wait_for_debugger) {
         to_do = ThreadToDo::suspend;
         status = ThreadStatus::suspend;
-        kernel.debugger.wait_for_debugger = false;
     } else {
         to_do = ThreadToDo::run;
         status = ThreadStatus::run;
