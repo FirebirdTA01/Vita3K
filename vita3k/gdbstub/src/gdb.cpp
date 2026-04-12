@@ -461,18 +461,18 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
         case 'S': {
             bool step = cmd == 's' || cmd == 'S';
 
-            // inferior_thread is the thread that triggered breakpoint before
-            // step or run that thread
-
-            if (state.gdb.inferior_thread != 0) {
+            if (step && state.gdb.inferior_thread != 0) {
+                // Step just the inferior thread: everything else stays frozen.
+                // resume() acquires thread->mutex internally so can't hold here.
                 const auto guard = std::lock_guard(state.kernel.mutex);
                 auto thread = state.kernel.threads[state.gdb.inferior_thread];
-                auto thread_lock = std::unique_lock(thread->mutex);
-                thread->resume(step);
-                if (step) {
-                    // Wait until it finish stepping
-                    // TODO if that thread waits for sync primitive, dead lock.
-                    thread->status_cond.wait(thread_lock, [&]() { return thread->status == ThreadStatus::suspend; });
+                thread->resume(true);
+                {
+                    auto thread_lock = std::unique_lock(thread->mutex);
+                    thread->status_cond.wait(thread_lock, [&]() {
+                        return thread->status == ThreadStatus::suspend
+                            || thread->status == ThreadStatus::wait;
+                    });
                 }
             }
 
