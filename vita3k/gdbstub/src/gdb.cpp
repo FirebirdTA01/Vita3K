@@ -189,8 +189,99 @@ static int64_t server_ack(GDBState &state, char ack = '+') {
 }
 
 static std::string cmd_supported(EmuEnvState &state, PacketCommand &command) {
+    // target.xml + qXfer handler are supported, but we don't advertise yet
+    // because VitaSDK's gdb requests it but then can't parse it and fails.
+    // We force CPSR.T=1 in the legacy g-packet instead giving gdb built with
+    // or without xml parsing Thumb detection. If arm-vita-eabi-gdb gets
+    // updated to support xml parsing in the future we can advertise
+    // "qXfer:features:read+".
     return "multiprocess-;swbreak+;hwbreak-;qRelocInsn-;fork-events-;vfork-events-;"
-           "exec-events-;vContSupported+;QThreadEvents-;no-resumed-;xmlRegisters=arm";
+           "exec-events-;vContSupported+;QThreadEvents-;no-resumed-";
+}
+
+// clang-format off
+static constexpr const char TARGET_XML[] =
+    "<?xml version=\"1.0\"?>"
+    "<!DOCTYPE target SYSTEM \"gdb-target.dtd\">"
+    "<target version=\"1.0\">"
+    "  <architecture>arm</architecture>"
+    "  <feature name=\"org.gnu.gdb.arm.core\">"
+    "    <reg name=\"r0\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r1\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r2\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r3\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r4\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r5\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r6\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r7\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r8\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r9\"   bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r10\"  bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r11\"  bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"r12\"  bitsize=\"32\" type=\"uint32\"/>"
+    "    <reg name=\"sp\"   bitsize=\"32\" type=\"data_ptr\"/>"
+    "    <reg name=\"lr\"   bitsize=\"32\"/>"
+    "    <reg name=\"pc\"   bitsize=\"32\" type=\"code_ptr\"/>"
+    "    <reg name=\"cpsr\" bitsize=\"32\" regnum=\"25\"/>"
+    "  </feature>"
+    "  <feature name=\"org.gnu.gdb.arm.vfp\">"
+    "    <reg name=\"d0\"  bitsize=\"64\" type=\"ieee_double\" regnum=\"26\"/>"
+    "    <reg name=\"d1\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d2\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d3\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d4\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d5\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d6\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d7\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d8\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d9\"  bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d10\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d11\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d12\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d13\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d14\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d15\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d16\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d17\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d18\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d19\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d20\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d21\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d22\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d23\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d24\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d25\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d26\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d27\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d28\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d29\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d30\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"d31\" bitsize=\"64\" type=\"ieee_double\"/>"
+    "    <reg name=\"fpscr\" bitsize=\"32\"/>"
+    "  </feature>"
+    "</target>";
+// clang-format on
+
+static std::string cmd_xfer_features(EmuEnvState &state, PacketCommand &command) {
+    const std::string content = content_string(command);
+    const std::string prefix = "qXfer:features:read:target.xml:";
+    if (content.substr(0, prefix.size()) != prefix)
+        return "E00";
+
+    state.gdb.client_has_xml = true;
+
+    const std::string params = content.substr(prefix.size());
+    const size_t comma = params.find(',');
+    const uint32_t offset = parse_hex(params.substr(0, comma));
+    const uint32_t length = parse_hex(params.substr(comma + 1));
+
+    const std::string xml(TARGET_XML);
+    if (offset >= xml.size())
+        return "l";
+
+    const std::string chunk = xml.substr(offset, length);
+    const bool last = (offset + chunk.size()) >= xml.size();
+    return (last ? "l" : "m") + chunk;
 }
 
 static std::string cmd_reply_empty(EmuEnvState &state, PacketCommand &command) {
@@ -270,8 +361,12 @@ static std::string read_register_hex(CPUState &cpu, uint32_t reg) {
         return "000000000000000000000000"; // FPA f0-f7: 12 bytes of zero
     if (reg == 24)
         return "00000000"; // FPA fps: zero
-    if (reg == 25)
-        return be_hex(read_cpsr(cpu));
+    if (reg == 25) {
+        // Vita is exclusively Thumb (Cortex-A9 MPCore). Ensure T bit is
+        // always reported so gdb auto-detects Thumb for breakpoints, even
+        // for threads whose CPU state hasn't been fully initialized yet.
+        return be_hex(read_cpsr(cpu) | 0x20);
+    }
     if (reg <= 57) {
         uint32_t d_idx = reg - 26;
         uint32_t lo = std::bit_cast<uint32_t>(read_float_reg(cpu, d_idx * 2));
@@ -320,17 +415,31 @@ static std::string cmd_read_registers(EmuEnvState &state, PacketCommand &command
 
     CPUState &cpu = *state.kernel.threads[state.gdb.current_thread]->cpu.get();
 
-    // g-packet: r0-r15, f0-f7 (FPA zeros), fps (zero), cpsr = 168 bytes = 336 hex
+    if (state.gdb.client_has_xml) {
+        // target.xml layout: r0-r15 (64B), cpsr (4B), d0-d31 (256B), fpscr (4B) = 328B = 656 hex
+        std::string str;
+        str.reserve(656);
+        for (uint32_t a = 0; a < 16; a++)
+            str += be_hex(fetch_core_reg(cpu, a));
+        str += be_hex(read_cpsr(cpu) | 0x20); // force T bit — Vita is always Thumb
+        for (uint32_t d = 0; d < 32; d++) {
+            uint32_t lo = std::bit_cast<uint32_t>(read_float_reg(cpu, d * 2));
+            uint32_t hi = std::bit_cast<uint32_t>(read_float_reg(cpu, d * 2 + 1));
+            str += be_hex(lo) + be_hex(hi);
+        }
+        str += be_hex(read_fpscr(cpu));
+        return str;
+    }
+
+    // Legacy layout (no XML): r0-r15, f0-f7 (FPA zeros), fps, cpsr = 168B = 336 hex
     std::string str;
     str.reserve(336);
-
     for (uint32_t a = 0; a < 16; a++)
         str += be_hex(fetch_core_reg(cpu, a));
     for (uint32_t a = 0; a < 8; a++)
-        str += "000000000000000000000000"; // f0-f7: 12 bytes each
-    str += "00000000"; // fps
-    str += be_hex(read_cpsr(cpu));
-
+        str += "000000000000000000000000";
+    str += "00000000";
+    str += be_hex(read_cpsr(cpu) | 0x20); // force T bit — Vita is always Thumb
     return str;
 }
 
@@ -342,18 +451,32 @@ static std::string cmd_write_registers(EmuEnvState &state, PacketCommand &comman
 
     CPUState &cpu = *state.kernel.threads[state.gdb.current_thread]->cpu.get();
 
-    // G-packet layout: r0-r15 (128 hex), f0-f7 (192 hex), fps (8 hex), cpsr (8 hex) = 336 hex
     const std::string content = content_string(command).substr(1);
     uint32_t offset = 0;
 
     for (uint32_t a = 0; a < 16 && offset + 8 <= content.size(); a++, offset += 8)
         write_core_reg(cpu, a, ntohl(parse_hex(content.substr(offset, 8))));
 
-    // Skip f0-f7 (8 × 24 hex = 192) + fps (8 hex)
-    offset += 192 + 8;
-
-    if (offset + 8 <= content.size())
-        write_cpsr(cpu, ntohl(parse_hex(content.substr(offset, 8))));
+    if (state.gdb.client_has_xml) {
+        // target.xml layout: cpsr next, then d0-d31, then fpscr
+        if (offset + 8 <= content.size()) {
+            write_cpsr(cpu, ntohl(parse_hex(content.substr(offset, 8))));
+            offset += 8;
+        }
+        for (uint32_t d = 0; d < 32 && offset + 16 <= content.size(); d++, offset += 16) {
+            uint32_t lo = ntohl(parse_hex(content.substr(offset, 8)));
+            uint32_t hi = ntohl(parse_hex(content.substr(offset + 8, 8)));
+            write_float_reg(cpu, d * 2, std::bit_cast<float>(lo));
+            write_float_reg(cpu, d * 2 + 1, std::bit_cast<float>(hi));
+        }
+        if (offset + 8 <= content.size())
+            write_fpscr(cpu, ntohl(parse_hex(content.substr(offset, 8))));
+    } else {
+        // Legacy layout: skip FPA (192 + 8 hex), then cpsr
+        offset += 192 + 8;
+        if (offset + 8 <= content.size())
+            write_cpsr(cpu, ntohl(parse_hex(content.substr(offset, 8))));
+    }
 
     return "OK";
 }
@@ -731,6 +854,7 @@ const static PacketFunctionBundle functions[] = {
     { "X", cmd_write_binary },
 
     // Query Packets
+    { "qXfer:features:read:", cmd_xfer_features },
     { "qfThreadInfo", cmd_get_first_thread },
     { "qsThreadInfo", cmd_get_next_thread },
     { "qSupported", cmd_supported },
@@ -857,6 +981,7 @@ static void server_listen(EmuEnvState &state) {
     }
 
     LOG_INFO("GDB Server Received Connection");
+    state.gdb.client_has_xml = false;
 
     int64_t status;
 

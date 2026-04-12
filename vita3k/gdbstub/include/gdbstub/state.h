@@ -51,4 +51,6 @@ struct GDBState {
     SceUID inferior_thread = 0;
 
     SceUID current_thread = 0;
+
+    bool client_has_xml = false;
 };

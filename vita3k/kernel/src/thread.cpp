@@ -137,7 +137,14 @@ int ThreadState::start(SceSize arglen, const Ptr<void> argp, bool run_entry_call
     run_start_callback = run_entry_callback;
     call_level = 1;
     load_context(*cpu, init_cpu_ctx);
-    write_pc(*cpu, entry_point);
+    // Mimic BX behavior: bit 0 of entry_point selects Thumb mode.
+    // Strip it from PC and set CPSR.T accordingly.
+    if (entry_point & 1) {
+        write_pc(*cpu, entry_point & ~1u);
+        write_cpsr(*cpu, read_cpsr(*cpu) | 0x20);
+    } else {
+        write_pc(*cpu, entry_point);
+    }
     write_lr(*cpu, cpu->halt_instruction_pc);
     write_reg(*cpu, 0, arglen);
 
