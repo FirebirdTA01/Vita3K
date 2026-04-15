@@ -17,6 +17,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <audio/state.h>
 #include <config/state.h>
 #include <emuenv/state.h>
 #include <util/bit_cast.h>
@@ -638,6 +639,7 @@ static std::string cmd_detach(EmuEnvState &state, PacketCommand &command) {
 
     state.gdb.inferior_thread = 0;
     state.gdb.current_thread = 0;
+    state.audio.switch_state(false);
     LOG_INFO("GDB Server Detached — breakpoints removed, threads resumed.");
     return "OK";
 }
@@ -694,6 +696,7 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                         }
                     }
                 }
+                state.audio.switch_state(false);
 
                 // Wait for a breakpoint hit (condvar) or a Ctrl-C interrupt
                 // (\x03 byte on the socket). The condvar fires instantly on
@@ -759,6 +762,7 @@ static std::string cmd_continue(EmuEnvState &state, PacketCommand &command) {
                         }
                     }
                 }
+                state.audio.switch_state(true);
             }
 
             state.gdb.current_thread = state.gdb.inferior_thread;
